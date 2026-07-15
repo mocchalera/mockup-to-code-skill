@@ -1,0 +1,1024 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Element Manifest",
+  "description": "The central data structure of mockup-to-code. Binds each mockup region (measured bbox) to a DOM element (data-el) so that box_diff can produce selector-level, actionable deltas. Rule: numbers must be measured, normalized, or user-provided — never invented by vision alone. In hybrid mode the manifest additionally records the DESIGNER CONSTRUCTION PLAN (placementScope/anchorTarget/relationshipToPreserve/responsiveBehavior), LAYER PLAN (layerRole/zLayer/positioning/overlapIntent/mustNotCover), and per-element text/asset reconstruction strategy.",
+  "type": "object",
+  "required": ["viewport", "image", "photoLed", "elements"],
+  "properties": {
+    "mode": {
+      "enum": ["pixel-clone", "production", "hybrid"],
+      "description": "Fidelity mode. pixel-clone: reproduce one authoritative comp exactly (box diff + pixel diff). production: clean production code informed by the comp. hybrid: reconstruct the comp's visual language — decompose into layers, regenerate photos, rebuild all type in HTML/CSS."
+    },
+    "viewport": {
+      "type": "object",
+      "required": ["width"],
+      "properties": {
+        "width": { "type": "integer", "description": "Canonical coordinate space width. Mockup is normalized to this; render uses the same." },
+        "height": { "type": "integer", "description": "Canonical reference-frame height. Required as pageComposition.referenceFrameHeight for multi-frame page-flow checks when frames share one normalized height." }
+      }
+    },
+    "image": { "type": "string", "description": "Path to the NORMALIZED mockup (output of normalize_image.py)" },
+    "photoLed": {
+      "type": "boolean",
+      "description": "Required Phase 1 declaration. true when any authoritative comp contains a photographic or illustrated subject/environment that must survive decomposition. photoLed=true requires at least one fv/section-critical mediaClass photo/illustration row; false is an explicit assertion that the comps are not photo-led."
+    },
+    "reviewPolicy": {
+      "type": "object",
+      "description": "Review calibration contract. Hybrid multi-frame runs require an independent crop-pair review and cap how much source-specific detail may be simplified as adapted.",
+      "required": ["independentReviewRequired", "maxAdaptedSourceSpecificRatio", "maxIndependentScoreDelta", "minForegroundPixelCoverage", "exactPromptProvenanceRequired", "photoGeometryRequired"],
+      "properties": {
+        "independentReviewRequired": { "const": true },
+        "maxAdaptedSourceSpecificRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "maxIndependentScoreDelta": { "type": "number", "minimum": 0, "description": "Maximum allowed absolute difference, on the 0-100 scale, between implementer and independent comp-fidelity scores before the lower score controls and the run needs review." },
+        "minForegroundPixelCoverage": { "type": "number", "minimum": 0, "maximum": 1, "description": "Minimum canonical-frame area that must remain pixel-comparable when a full-frame generated FV has opaque foreground surfaces." },
+        "exactPromptProvenanceRequired": { "const": true },
+        "photoGeometryRequired": { "const": true }
+      }
+    },
+    "detailInventory": {
+      "type": "array",
+      "description": "Machine-readable Phase 1 inventory. Every visible source device is judged at completion; sourceSpecific prevents a distinctive motif from disappearing behind a generic adapted verdict.",
+      "items": {
+        "type": "object",
+        "required": ["id", "section", "description", "sourceSpecific", "priority", "manifestElementIds"],
+        "properties": {
+          "id": { "type": "string" },
+          "section": { "type": "string" },
+          "description": { "type": "string" },
+          "kind": { "enum": ["content", "typography", "photo", "decoration", "ui", "composite", "ground-environment", "seam"] },
+          "sourceSpecific": { "type": "boolean" },
+          "priority": { "enum": ["critical", "high", "normal", "low"] },
+          "manifestElementIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "evidenceMode": { "enum": ["manifest", "crop-only"] },
+          "renderingCraft": {
+            "type": "object",
+            "description": "Source-observed construction traits that prevent a distinctive device from collapsing into a generic card, emoji, Unicode symbol, straight line, or category stand-in.",
+            "required": ["medium", "signatureTraits", "minimumAtomicParts", "atomicParts", "genericStandInsForbidden", "evidencePath"],
+            "properties": {
+              "medium": { "enum": ["typography", "line-art", "illustration", "photo", "ui", "card-composite", "decorative-geometry", "surface", "ground-environment"] },
+              "signatureTraits": { "type": "array", "minItems": 2, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "minimumAtomicParts": { "type": "integer", "minimum": 1 },
+              "atomicParts": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true, "description": "Observed internal craft parts that must survive. They do not automatically require separate DOM nodes or files." },
+              "genericStandInsForbidden": { "const": true },
+              "allowTextGlyphStandIn": { "type": "boolean", "default": false },
+              "evidencePath": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "sourceSpecific": { "const": true } }, "required": ["sourceSpecific"] },
+            "then": { "required": ["renderingCraft"] }
+          }
+        ]
+      }
+    },
+    "specialistReports": {
+      "type": "object",
+      "description": "Hash-bound reports from conditionally invoked specialist skills. They supplement, never replace, manifest and rendered evidence.",
+      "properties": {
+        "typography": {
+          "type": "object",
+          "required": ["contract", "path", "sha256"],
+          "properties": {
+            "contract": { "const": "typography-report/v1" },
+            "path": { "type": "string" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "deviceInventory": {
+          "type": "object",
+          "required": ["contract", "path", "sha256"],
+          "properties": {
+            "contract": { "const": "detail-inventory/v1" },
+            "path": { "type": "string" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "photoArtDirection": {
+          "type": "object",
+          "required": ["contract", "path", "sha256"],
+          "properties": {
+            "contract": { "const": "photo-art-direction/v1" },
+            "path": { "type": "string" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "seamContinuity": {
+          "type": "object",
+          "required": ["contract", "path", "sha256"],
+          "properties": {
+            "contract": { "const": "seam-continuity/v1" },
+            "path": { "type": "string" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "mediaDelivery": {
+          "type": "object",
+          "required": ["contract", "path", "sha256"],
+          "properties": {
+            "contract": { "const": "media-delivery-report/v1" },
+            "path": { "type": "string" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "interaction": {
+          "type": "object",
+          "required": ["contract", "path", "sha256"],
+          "properties": {
+            "contract": { "const": "interaction-report/v1" },
+            "path": { "type": "string" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        }
+      }
+    },
+    "productionReadiness": {
+      "type": "object",
+      "description": "Explicit production handoff scope. False keeps fidelity-only prototypes from paying for unrelated delivery/interaction gates.",
+      "required": ["mediaDeliveryRequired", "interactionQaRequired"],
+      "properties": {
+        "mediaDeliveryRequired": { "type": "boolean" },
+        "interactionQaRequired": { "type": "boolean" }
+      }
+    },
+    "motion": {
+      "type": "object",
+      "description": "Conditional Phase 4.75/7.5 motion plan. Static pages set required=false; source-requested motion must be planned and runtime-tested.",
+      "required": ["required"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "sourceRef": {
+          "type": "object",
+          "required": ["path", "quote"],
+          "properties": { "path": { "type": "string" }, "quote": { "type": "string", "minLength": 1 } }
+        },
+        "visualQaState": { "const": "settled" },
+        "motifs": {
+          "type": "array", "minItems": 1, "maxItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "targets", "trigger", "properties", "durationMs", "easing", "iterations", "meaning"],
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "enum": ["entrance", "interaction", "ambient"] },
+              "targets": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string" }, "uniqueItems": true },
+              "trigger": {
+                "type": "object", "required": ["type"],
+                "properties": { "type": { "enum": ["load", "viewport", "hover", "focus"] }, "once": { "type": "boolean" }, "threshold": { "type": "number", "minimum": 0, "maximum": 1 } }
+              },
+              "properties": { "type": "array", "minItems": 1, "items": { "enum": ["opacity", "transform", "stroke-dashoffset"] }, "uniqueItems": true },
+              "durationMs": { "type": "number", "exclusiveMinimum": 0 },
+              "easing": { "type": "string" },
+              "delayMs": { "type": "number", "minimum": 0 },
+              "staggerMs": { "type": "number", "minimum": 0 },
+              "iterations": { "oneOf": [{ "type": "number", "minimum": 1 }, { "const": "infinite" }] },
+              "meaning": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "comprehensionOrder": {
+          "type": "array",
+          "items": { "type": "object", "required": ["targetId", "order"], "properties": { "targetId": { "type": "string" }, "order": { "type": "integer", "minimum": 1 } } }
+        },
+        "reducedMotion": {
+          "type": "object", "required": ["strategy", "contentVisibleWithoutJs"],
+          "properties": { "strategy": { "const": "settled-static" }, "contentVisibleWithoutJs": { "const": true } }
+        }
+      }
+    },
+    "referenceImages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "use"],
+        "properties": {
+          "path": { "type": "string" },
+          "use": {
+            "enum": ["clone-target", "visual-language", "asset-source", "section-comp"],
+            "description": "clone-target: reproduce exactly (pixel-clone). visual-language: source of typography/color/layering mood, NOT a reproduction target (hybrid). asset-source: layered/text-free image to extract assets from. section-comp: multi-frame comp set — this frame IS the comp for one section of the page (set `section`)."
+          },
+          "section": { "type": "string", "description": "For use=section-comp: the data-el of the page section this frame is the comp for." },
+          "notes": { "type": "string" }
+        }
+      },
+      "description": "Multiple references are either visual-language sources (at most one clone-target), or — in a multi-frame comp set — section-comp frames, one per page section. All frames must be normalized to the same width."
+    },
+    "pageComposition": {
+      "type": "object",
+      "description": "Required by the mockup-to-code contract for multi-frame hybrid pages. Turns repeated section comps into one scrolling web composition: section height/density/overflow strategies plus one evidenced contract per adjacent seam. The reference image height is a density floor, never a fixed section-height instruction.",
+      "required": ["referenceFrameHeight", "sections", "seams"],
+      "properties": {
+        "referenceFrameHeight": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Normalized section-comp height used only to detect collapse or repeated-frame locking. Taller rendered sections are legitimate and often expected."
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["section", "heightStrategy", "density", "overflowPolicy"],
+            "properties": {
+              "section": { "type": "string", "description": "data-el of a section-comp root." },
+              "heightStrategy": {
+                "enum": ["content-led", "breathing", "immersive", "viewport-chapter"],
+                "description": "content-led grows from content; breathing deliberately adds vertical pause; immersive gives a visual environment room; viewport-chapter intentionally behaves like a framed chapter and still needs a human uniform-height intent when repeated."
+              },
+              "density": { "enum": ["dense", "balanced", "airy"] },
+              "minHeightRatio": { "type": "number", "minimum": 1, "description": "Optional planned minimum relative to referenceFrameHeight. The default density floor is 1.0." },
+              "targetHeightRange": {
+                "type": "object",
+                "properties": {
+                  "min": { "type": "number", "exclusiveMinimum": 0 },
+                  "max": { "type": "number", "exclusiveMinimum": 0 }
+                }
+              },
+              "overflowPolicy": {
+                "enum": ["visible", "clip", "bleed-to-next", "next-section-owned", "cross-section-bridge"],
+                "description": "Explicit ownership of comp elements that approach or cross the frame edge. Do not apply overflow:hidden to every section by default."
+              },
+              "clipReason": { "type": "string", "description": "Required when overflowPolicy=clip; name the comp-visible frame or mask that owns the cut." },
+              "notes": { "type": "string" }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": { "overflowPolicy": { "const": "clip" } },
+                  "required": ["overflowPolicy"]
+                },
+                "then": { "required": ["clipReason"] }
+              }
+            ]
+          }
+        },
+        "seams": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to", "type", "evidencePath"],
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "type": { "enum": ["hard-cut", "breathing-space", "overlap", "motif-bridge", "color-handoff", "photo-handoff"] },
+              "transitionSpacePx": { "type": "number", "minimum": 0, "description": "Rendered vertical breathing/transition space owned by this boundary. It may live in section padding rather than a separate DOM node." },
+              "bridgeElements": { "type": "array", "items": { "type": "string" }, "description": "Manifest id/el values that visually cross or connect this boundary." },
+              "evidencePath": { "type": "string", "description": "Readable rendered seam crop/pair covering both sides of the boundary." },
+              "narrative": { "type": "string" },
+              "continuity": {
+                "type": "object",
+                "description": "Explicit art-directed cross-section contract. Use only when a verbatim source asks for seamless unity/scroll continuation; ordinary seams do not opt in.",
+                "required": ["required"],
+                "properties": {
+                  "required": { "type": "boolean" },
+                  "sourceRef": {
+                    "type": "object",
+                    "required": ["path", "quote"],
+                    "properties": {
+                      "path": { "type": "string" },
+                      "quote": { "type": "string", "minLength": 1 }
+                    }
+                  },
+                  "surfaceOwner": { "enum": ["to-section", "shared"] },
+                  "geometryPrimitive": { "enum": ["bezier", "circle-arc", "freeform-path"] },
+                  "layers": {
+                    "type": "array",
+                    "minItems": 3,
+                    "uniqueItems": true,
+                    "items": { "enum": ["outgoing-environment", "target-surface", "connective-motif", "incoming-preview"] }
+                  },
+                  "previewTargets": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+                  "cueTarget": { "type": "string" },
+                  "desktopEvidencePath": { "type": "string" },
+                  "mobileEvidencePath": { "type": "string" },
+                  "colorSampleReport": { "type": "string" }
+                },
+                "allOf": [
+                  {
+                    "if": { "properties": { "required": { "const": true } }, "required": ["required"] },
+                    "then": { "required": ["sourceRef", "surfaceOwner", "geometryPrimitive", "layers", "previewTargets", "desktopEvidencePath", "mobileEvidencePath", "colorSampleReport"] }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "uniformHeightIntent": { "$ref": "#/$defs/humanIntent", "description": "Only a verbatim human-approved reason may waive stacked-frame detection." },
+        "allSectionsClipIntent": { "$ref": "#/$defs/humanIntent", "description": "Only a verbatim human-approved chapter-frame intent may allow every section to clip overflow." },
+        "allHardCutIntent": { "$ref": "#/$defs/humanIntent", "description": "Only a verbatim human-approved art direction may allow all seams to remain hard cuts." }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "description": "Design tokens with provenance",
+      "properties": {
+        "colors": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["value", "source"],
+            "properties": {
+              "value": { "type": "string" },
+              "source": { "enum": ["sample_color", "normalized", "user", "inferred"] }
+            }
+          }
+        },
+        "spacingScale": { "type": "array", "items": { "type": "number" } },
+        "containerWidth": { "type": "number" }
+      }
+    },
+    "elements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "el", "bbox", "priority"],
+        "properties": {
+          "id": { "type": "string", "description": "semantic id, e.g. hero.title" },
+          "el": { "type": "string", "description": "data-el attribute value in the HTML, e.g. hero-title. Selector is always [data-el=\"<el>\"]" },
+          "role": { "enum": ["section", "container", "heading", "text", "button", "nav", "card", "card-grid", "image", "icon", "decoration", "background", "label", "other"] },
+          "mediaClass": {
+            "enum": ["photo", "illustration", "lettering-decal", "ui-mock", "icon", "decorative-geometry"],
+            "description": "principle 13 plus rule 5 — the comp visual's medium, which the build must preserve. photo/illustration may only be satisfied by raster strategies (layered source / replace incl. licensed stock / crop / generated / placeholder), never svg/css and never an HTML/CSS scene rendered to PNG. lettering-decal is only for non-structural expressive text such as handwritten bubbles/signatures/decorative notes; it may be generated transparent raster, crop/replace, hand-traced svg, or hand-font DOM with exact text proof. svg/css drawing is legitimate for ui-mock, icon and decorative-geometry."
+          },
+          "iconSource": {
+            "type": "string",
+            "description": "for mediaClass=icon: the established icon set and glyph used, e.g. 'lucide:trending-up' (Lucide/Tabler/Phosphor/Heroicons/Material Symbols). Bespoke hand-drawn paths are a last resort for subjects no set covers, and must reproduce the comp's specific subject."
+          },
+          "priority": {
+            "enum": ["critical", "high", "normal", "low"],
+            "description": "critical: hero heading, container, CTA, first-view image. low: background decoration, shadows, grain."
+          },
+          "qaPriority": {
+            "enum": ["fv-critical", "section-critical", "detail", "decorative"],
+            "description": "QA gate class. fv-critical elements go through the FV QA gate (poster integrity, mobile heading size, overlap checks) in addition to box diff. detail = small design device from the Phase 1 detail inventory (accent underline, tick, eyebrow rule, watermark type, frame offset…) — exempt from the box-diff loop but MUST be dispositioned (present/adapted/missing/waived) in the Phase 7 section review."
+          },
+          "bbox": {
+            "type": "object",
+            "required": ["x", "y", "w", "h"],
+            "properties": {
+              "x": { "type": "number" }, "y": { "type": "number" },
+              "w": { "type": "number" }, "h": { "type": "number" }
+            }
+          },
+          "bboxSource": {
+            "enum": ["snap_bbox", "profile", "normalized", "user", "estimated", "implementation-derived"],
+            "description": "estimated = vision-only guess; allowed only for priority=low elements (and hybrid-mode elements whose bbox is a layout intent, not a clone target). implementation-derived = read back from your own render's DOMRects — allowed only to tighten contracts on decorative/low elements; NEVER fidelity evidence for fv-critical/section-critical (box diff against your own output is a tautology). Comp-side sources (snap_bbox/profile/normalized/user) are required for FV + section-critical BEFORE implementation."
+          },
+          "measurementRef": {
+            "type": "object",
+            "description": "Ledger row for the comp-side measurement that produced or changed this bbox. Required by artifact_check.py for fv-critical and section-critical elements; prevents silently tuning the manifest to the current DOM.",
+            "properties": {
+              "sourceArtifact": { "type": "string", "description": "file that contains the measurement evidence: normalized frame, snap/profile JSON, crop pair, or handoff source" },
+              "roi": { "type": "string", "description": "ROI used for measurement, formatted x,y,w,h in the normalized frame when applicable" },
+              "command": { "type": "string", "description": "exact measurement command or manual zoom method" },
+              "method": { "type": "string", "description": "snap_bbox, profile, zoom-manual, user-spec, normalized-frame, etc." },
+              "updatedFrom": { "type": "string", "description": "previous bbox or ledger id when this bbox was revised" },
+              "reason": { "type": "string", "description": "why the bbox was accepted or revised; DOMRect matching is not a valid reason" }
+            }
+          },
+          "sourceImage": {
+            "type": "string",
+            "description": "Multi-frame comp sets: path of the section-comp frame this element's bbox was measured in. The bbox is in that frame's normalized coordinate space (frame-local y, not page y)."
+          },
+          "tolerance": {
+            "type": "object",
+            "description": "override default per-priority tolerances (px)",
+            "properties": {
+              "x": { "type": "number" }, "y": { "type": "number" },
+              "w": { "type": "number" }, "h": { "type": "number" }
+            }
+          },
+          "toleranceReason": {
+            "type": "string",
+            "description": "Required whenever `tolerance` is set on an important element. Explain the comp-side reason (soft edge, glyph-tight text, fallback manual measure), not 'so box_diff passes'. box_diff.py reports whether the tolerance came from manifest or defaults."
+          },
+          "text": {
+            "type": "object",
+            "description": "present for text-bearing elements",
+            "properties": {
+              "content": { "type": "string" },
+              "fontFamily": { "type": "string", "description": "REAL font from the allowlist, frozen early" },
+              "fontPolicy": { "enum": ["frozen"], "description": "always frozen for structural HTML/CSS text — generated lettering decals are separate mediaClass elements; structural copy never hides in an image" },
+              "maskInPixelDiff": { "type": "boolean", "description": "true for all text elements" }
+            }
+          },
+          "textRecreation": {
+            "enum": ["content-html", "visual-match-css", "lettering-decal", "masked-ignore"],
+            "description": "How baked-in mockup text is handled. content-html: the text content lives in HTML (all real copy — headings, CTA, nav, labels, years, legal). visual-match-css: additionally reproduce the comp's typographic treatment in CSS (size, tracking, leading, outline, band, vertical writing — see templates/poster-typography.css). lettering-decal: non-structural expressive lettering rendered as a verified decal asset or hand-traced equivalent. masked-ignore: decorative texture text, not reproduced."
+          },
+          "letteringProof": {
+            "type": "object",
+            "description": "Required for mediaClass=lettering-decal because DOM copy checks intentionally exclude decals. Proves the exact phrase and the rendered asset via a saved crop pair.",
+            "required": ["exactText", "method", "pairPath"],
+            "properties": {
+              "exactText": { "type": "string", "description": "Character-exact transcription; must equal text.content." },
+              "method": { "type": "string", "description": "Verification method, e.g. 200% glyph-by-glyph comparison against the comp." },
+              "pairPath": { "type": "string", "description": "Readable non-empty crop pair showing comp lettering beside the shipped decal." }
+            }
+          },
+          "assetStrategy": {
+            "enum": ["html-text", "css", "svg", "crop-asset", "generated", "replace", "placeholder"],
+            "description": "how this visual is implemented, constrained by mediaClass (principle 13): photo/illustration never take css/svg. crop-asset requires a clean contamination check AND proof that the crop preserves the full comp photo composition; it is forbidden for a fused/overlapped source field without a separate clean layer. generated = photo/illustration regenerated text-free via a raster image model OR a lettering-decal generated as transparent raster (imagegen / cockpit gen-image; an HTML/CSS scene rendered to PNG does NOT qualify for photo-class content; requires generatedAsset evidence); replace = substitute an owned/licensed-stock text-free asset or a source lettering asset (requires replacedAsset evidence incl. license for stock — judge subject/mood/color-grade/aspect or exact lettering against the comp like a generated candidate); placeholder = explicit neutral stand-in awaiting a user-provided asset — never a masked contaminated crop and never a vector redraw of a photo subject"
+          },
+          "visualRole": {
+            "enum": ["background-environment", "contained-photo", "object-detail", "subject-cutout"],
+            "description": "Role of a photo/illustration in the comp. background-environment is judged on the full photographic field, so a narrow clean subcrop cannot replace the specified room/scene composition."
+          },
+          "photoCompositionMode": {
+            "enum": ["full-frame-plate", "contained-photo", "subject-cutout-over-plate", "object-detail-tone-merged"],
+            "description": "How the photo is constructed in the comp, decided before generation/CSS. full-frame-plate means the apparent right-side photo may actually continue behind a foreground mask; subject-cutout-over-plate requires separate clean environment and cutout assets; object-detail-tone-merged means a card photo shares its background tone and dissolves into the card rather than sitting as a hard rectangle."
+          },
+          "copySpace": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["for", "roi", "minClearance"],
+              "properties": {
+                "for": { "type": "string", "description": "Manifest element id that consumes this clean space." },
+                "roi": { "$ref": "#/$defs/rectXYWH" },
+                "minClearance": { "type": "number", "minimum": 0 }
+              }
+            }
+          },
+          "copySpaceNotRequiredReason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Required instead of copySpace only when a full-field scene has no structural copy consumer. Do not use it to avoid measuring a hero copy region."
+          },
+          "subjectZones": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "roi", "kind"],
+              "properties": {
+                "id": { "type": "string" },
+                "roi": { "$ref": "#/$defs/rectXYWH" },
+                "kind": { "enum": ["face", "person", "product", "focal-object", "environment-anchor"] }
+              }
+            }
+          },
+          "responsiveFocalPoints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["viewportWidth", "objectPosition"],
+              "properties": {
+                "viewportWidth": { "type": "integer", "minimum": 1 },
+                "objectPosition": { "type": "string" }
+              }
+            }
+          },
+          "clipOwner": {
+            "type": "string",
+            "description": "Element id whose border-radius/clip-path owns this layer. Use when a veil/gradient/photo is clipped inside a rounded frame rather than across the whole section."
+          },
+          "cardPhotoIntegration": {
+            "type": "object",
+            "description": "Required planning evidence for photo-led cards whose photo visually merges with the card field.",
+            "required": ["method", "edgeTreatment", "pairPath"],
+            "properties": {
+              "method": { "enum": ["tone-merged-background", "masked-img", "transparent-cutout", "contained-hard-edge"] },
+              "sampledBackground": { "type": "string", "description": "Measured card/photo shared background color or gradient token." },
+              "edgeTreatment": { "type": "string", "description": "Which image edges bleed, dissolve, mask, or remain hard because the comp shows them." },
+              "pairPath": { "type": "string", "description": "Crop pair proving photo/card integration rather than only object presence." }
+            }
+          },
+          "assetSurfaceContract": {
+            "type": "object",
+            "description": "Ownership contract between a raster asset and its final consumer. Prevents a generated image from baking in the same card shell, padding, radius, shadow, or color field that CSS owns.",
+            "required": ["consumerIds", "consumerOwnsFrame", "consumerOwnsBackground", "assetMustBleedToEdges", "assetMustNotContainPanel", "assetMustNotContainPadding", "reviewPath"],
+            "properties": {
+              "consumerIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+              "consumerOwnsFrame": { "type": "boolean" },
+              "consumerOwnsBackground": { "type": "boolean" },
+              "assetMustBleedToEdges": { "type": "boolean" },
+              "assetMustNotContainPanel": { "type": "boolean" },
+              "assetMustNotContainPadding": { "type": "boolean" },
+              "reviewPath": { "type": "string", "description": "Readable isolated-asset and crop-in-use review proving the ownership boundary." }
+            }
+          },
+          "surfaceIntegration": {
+            "type": "object",
+            "description": "How an adopted raster joins its final web surface. This is independent from assetUnit: assetUnit chooses what is generated together; surfaceIntegration chooses whether that unit floats with alpha, bleeds, masks, tone-matches, or preserves a source-visible frame.",
+            "required": ["mode", "sourceTopology", "sourceTopologyEvidencePath", "edgePolicy", "consumerSurfaceOwner", "outerWhitespaceOwner", "cropInUsePath"],
+            "properties": {
+              "mode": { "enum": ["alpha_floating", "opaque_full_bleed", "opaque_masked_merge", "opaque_tone_matched", "intentional_frame"] },
+              "sourceTopology": { "enum": ["section_field", "floating_scene", "contained_artwork", "tone_merged_object", "source_visible_frame"], "description": "How the raster reads in the source comp before generation. This cannot be changed merely to accommodate an opaque generator output." },
+              "sourceTopologyEvidencePath": { "type": "string", "minLength": 1, "description": "Readable source crop proving whether the art owns the section field, floats, is contained, tone-merges, or visibly keeps a frame." },
+              "edgePolicy": {
+                "type": "object",
+                "required": ["top", "right", "bottom", "left"],
+                "properties": {
+                  "top": { "enum": ["alpha", "bleed", "mask", "tone_match", "source_frame", "not_visible"] },
+                  "right": { "enum": ["alpha", "bleed", "mask", "tone_match", "source_frame", "not_visible"] },
+                  "bottom": { "enum": ["alpha", "bleed", "mask", "tone_match", "source_frame", "not_visible"] },
+                  "left": { "enum": ["alpha", "bleed", "mask", "tone_match", "source_frame", "not_visible"] }
+                },
+                "additionalProperties": false
+              },
+              "consumerSurfaceOwner": { "enum": ["css", "asset", "shared"] },
+              "outerWhitespaceOwner": { "enum": ["css", "asset", "none"] },
+              "consumerBackgroundColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "edgeColorTolerance": { "type": "number", "minimum": 0 },
+              "maskOwner": { "type": "string", "minLength": 1 },
+              "sourceFrameVisible": { "type": "boolean" },
+              "sourceEvidencePath": { "type": "string", "minLength": 1 },
+              "cropInUsePath": { "type": "string", "minLength": 1, "description": "Rendered consumer crop proving there is no double padding, hard color seam, or unintended image frame." }
+            }
+          },
+          "assetUnit": {
+            "type": "object",
+            "description": "Semantic generation boundary. Split only when a member behaves independently; otherwise keep one coherent static artwork plate.",
+            "required": ["kind", "splitPolicy", "members", "independentBehavior", "sourceEvidencePath"],
+            "properties": {
+              "kind": { "enum": ["full_field_scene_plate", "clean_background_plate", "transparent_foreground", "transparent_scene", "card_artwork_plate", "atomic_raster", "code_native"] },
+              "splitPolicy": { "enum": ["keep-together", "separate"] },
+              "members": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+              "independentBehavior": {
+                "type": "object",
+                "required": ["motion", "responsiveRecompose", "reuse", "interaction", "contentUpdate", "layering"],
+                "properties": {
+                  "motion": { "type": "boolean" },
+                  "responsiveRecompose": { "type": "boolean" },
+                  "reuse": { "type": "boolean" },
+                  "interaction": { "type": "boolean" },
+                  "contentUpdate": { "type": "boolean" },
+                  "layering": { "type": "boolean" }
+                },
+                "additionalProperties": false
+              },
+              "keepTogetherReason": { "type": "string", "minLength": 1 },
+              "splitEvidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "sourceEvidencePath": { "type": "string", "minLength": 1 }
+            }
+          },
+          "decorativeCraft": {
+            "type": "object",
+            "description": "Specific construction contract for curves, fields, or diagrams so a bezier/gradient/orbit is not replaced by a flat polygon or straight line.",
+            "required": ["fieldType", "complexityTarget", "medium", "evidencePath"],
+            "properties": {
+              "fieldType": { "enum": ["bezier-gradient-field", "dotted-orbit", "flowing-lines", "radial-field", "flat-geometry", "other"] },
+              "complexityTarget": { "type": "string", "description": "Measured/observed path count, node count, curvature, stops, overlaps, and density to preserve." },
+              "medium": { "enum": ["svg", "css-gradient", "generated-raster", "html-svg-hybrid"] },
+              "evidencePath": { "type": "string", "description": "Comp crop or pair proving the field craft." },
+              "geometryPrimitive": { "enum": ["bezier", "circle-arc", "ellipse", "radial-gradient", "freeform-path", "not-applicable"], "description": "Underlying geometry. Large section waves default to a measured bezier or an off-canvas true-circle arc; ellipse requires source evidence." },
+              "circleArcGeometry": {
+                "type": "object",
+                "required": ["diameterPx", "centerX", "centerY", "visibleArcIntent"],
+                "properties": {
+                  "diameterPx": { "type": "number", "exclusiveMinimum": 0 },
+                  "centerX": { "type": "number", "description": "Circle center in section-local pixels; may be outside the viewport." },
+                  "centerY": { "type": "number", "description": "Circle center in section-local pixels; may be outside the viewport." },
+                  "visibleArcIntent": { "type": "string" }
+                }
+              },
+              "ellipseException": {
+                "type": "object",
+                "required": ["sourceEvidenced", "reason", "evidencePath"],
+                "properties": {
+                  "sourceEvidenced": { "const": true },
+                  "reason": { "type": "string" },
+                  "evidencePath": { "type": "string" }
+                }
+              }
+            }
+          },
+          "sourceFrameHasForegroundOverlap": {
+            "type": "boolean",
+            "description": "Required for fv/section-critical photo/illustration assets. Judge the full intended photo field in the source comp, before choosing a crop. true when text, nav, CTA, logos, cards, UI, watermarks, decorative lettering, or other foreground design matter is fused over that field."
+          },
+          "sourceFrameOverlapKinds": {
+            "type": "array",
+            "items": {
+              "enum": ["structural-text", "logo", "nav", "cta", "card", "chip", "chart", "ui", "watermark", "decorative-lettering", "foreground-subject", "other"]
+            },
+            "description": "Specific devices fused over the intended source photo field. Required when sourceFrameHasForegroundOverlap=true."
+          },
+          "cleanLayeredSource": {
+            "type": "boolean",
+            "description": "true only when a separate, text/UI-free source layer exists outside the flattened comp. A clean-looking subregion cropped from the flattened comp is not a clean layered source."
+          },
+          "cropPreservesComposition": {
+            "type": "boolean",
+            "description": "Required for crop-asset. true only when the adopted crop preserves the comp's subject count, environment, focal relationships, copy-space geometry, and intended aspect. Excluding overlap by narrowing the scene is false."
+          },
+          "generationAttempts": {
+            "type": "array",
+            "description": "Recorded raster-generation attempts. A licensed-stock or placeholder fallback for a fused photo field requires at least one failed attempt with generator, prompt, and error.",
+            "items": {
+              "type": "object",
+              "required": ["generator", "prompt", "status"],
+              "properties": {
+                "generator": { "type": "string" },
+                "prompt": { "type": "string" },
+                "status": { "enum": ["succeeded", "failed"] },
+                "outputPath": { "type": "string" },
+                "error": { "type": "string" },
+                "attemptedAt": { "type": "string" }
+              }
+            }
+          },
+          "croppedAsset": {
+            "type": "object",
+            "description": "REQUIRED when assetStrategy=crop-asset. Evidence that a clean crop also preserves the comp's photographic composition.",
+            "required": ["workspacePath", "sourcePath", "sourceRoi", "contaminationCheck", "reviewPath", "pairPath"],
+            "properties": {
+              "workspacePath": { "type": "string" },
+              "sourcePath": { "type": "string" },
+              "sourceRoi": { "type": "string", "description": "x,y,w,h in the normalized source" },
+              "contaminationCheck": {
+                "type": "object",
+                "required": ["method", "verdict"],
+                "properties": {
+                  "method": { "type": "string" },
+                  "reportPath": { "type": "string" },
+                  "verdict": { "const": "clean" },
+                  "notes": { "type": "string" }
+                }
+              },
+              "reviewPath": { "type": "string" },
+              "pairPath": { "type": "string", "description": "Pair that judges both cleanliness and composition retention, not only the cropped pixels" }
+            }
+          },
+          "replacedAsset": {
+            "type": "object",
+            "description": "REQUIRED when assetStrategy=replace. Evidence that the substitute asset was judged against the comp, not just 'text-free and available'.",
+            "required": ["sourcePath", "workspacePath", "replacementKind", "matchRationale", "contaminationCheck", "reviewPath", "pairPath"],
+            "properties": {
+              "sourcePath": { "type": "string", "description": "where the asset came from (repo path / library / stock id)" },
+              "workspacePath": { "type": "string", "description": "local adopted file used by the build" },
+              "replacementKind": { "enum": ["provided", "owned", "licensed-stock"] },
+              "matchRationale": { "type": "string", "description": "explicit judgment vs the comp photo: subject type, mood & lighting, color grade, aspect/focal. A mismatch on any axis is grounds to regenerate instead." },
+              "grading": { "type": "string", "description": "CSS filter / treatment applied to harmonize color grade with the comp, if any" },
+              "license": { "type": "string", "description": "for stock assets: the license and source (e.g. 'Unsplash License, unsplash.com/photos/…') — required when sourcePath is stock" },
+              "usedBy": { "type": "array", "items": { "type": "string" }, "description": "element ids that consume this asset" },
+              "contaminationCheck": {
+                "type": "object",
+                "required": ["method", "verdict"],
+                "properties": {
+                  "method": { "type": "string" },
+                  "reportPath": { "type": "string" },
+                  "verdict": { "const": "clean" },
+                  "notes": { "type": "string" }
+                }
+              },
+              "reviewPath": { "type": "string" },
+              "pairPath": { "type": "string" }
+            }
+          },
+          "generatedAsset": {
+            "type": "object",
+            "description": "REQUIRED when assetStrategy=generated. Evidence trail for regenerated images.",
+            "required": ["prompt", "promptRef", "generationReceipt", "inputRefs", "sourceImage", "workspacePath", "generator", "contaminationCheck", "reviewPath", "pairPath"],
+            "properties": {
+              "prompt": { "type": "string", "description": "the full generation prompt used" },
+              "promptRef": {
+                "type": "object",
+                "required": ["path", "sha256", "kind"],
+                "properties": {
+                  "path": { "type": "string" },
+                  "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                  "kind": { "const": "exact-prompt" }
+                }
+              },
+              "generationReceipt": {
+                "type": "object",
+                "description": "Hash-bound adopted prompt-generation-receipt/v1 issued before the output existed.",
+                "required": ["path", "sha256"],
+                "properties": {
+                  "path": { "type": "string" },
+                  "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                }
+              },
+              "inputRefs": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["path", "sha256", "role", "includedInGeneration"],
+                  "properties": {
+                    "path": { "type": "string" },
+                    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                    "role": { "enum": ["composition-reference", "style-reference", "edit-target", "supporting-input"] },
+                    "includedInGeneration": { "type": "boolean", "description": "false means consulted by the agent but not actually sent to the generator." }
+                  }
+                }
+              },
+              "sourceImage": { "type": "string", "description": "mockup/reference the generation is based on" },
+              "workspacePath": { "type": "string", "description": "where the generated asset is saved, e.g. work/assets/hero-bg.png" },
+              "generator": { "type": "string", "description": "tool used, e.g. imagegen, cockpit image" },
+              "usedBy": { "type": "array", "items": { "type": "string" }, "description": "element ids that consume this asset" },
+              "contaminationCheck": {
+                "type": "object",
+                "description": "For photo/illustration assets: proof that the adopted bitmap is clean.",
+                "properties": {
+                  "method": { "type": "string", "description": "crop_asset.py report, 200% visual sweep, or both" },
+                  "reportPath": { "type": "string", "description": "JSON/markdown artifact for the contamination check" },
+                  "verdict": { "const": "clean", "description": "only a clean adopted candidate can satisfy generatedAsset" },
+                  "notes": { "type": "string" }
+                }
+              },
+              "reviewPath": { "type": "string", "description": "photo-asset-review.md row/block for this candidate" },
+              "pairPath": { "type": "string", "description": "crop pair proving asset match or clean-raster adoption" }
+            }
+          },
+          "multiZoneAsset": {
+            "type": "object",
+            "description": "Required when multiple distinct source photo devices intentionally share one panoramic asset. Each consumer gets a non-identical crop, subject signature, and final integration pair; otherwise use separate photo rows/assets.",
+            "required": ["assetWidth", "assetHeight", "zones"],
+            "properties": {
+              "assetWidth": { "type": "number", "exclusiveMinimum": 0 },
+              "assetHeight": { "type": "number", "exclusiveMinimum": 0 },
+              "zones": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "object",
+                  "required": ["inventoryId", "cropRoi", "subjectSignature", "usedBy", "pairPath", "pairKind"],
+                  "properties": {
+                    "inventoryId": { "type": "string" },
+                    "cropRoi": {
+                      "type": "object",
+                      "required": ["x", "y", "w", "h"],
+                      "properties": {
+                        "x": { "type": "number" },
+                        "y": { "type": "number" },
+                        "w": { "type": "number", "exclusiveMinimum": 0 },
+                        "h": { "type": "number", "exclusiveMinimum": 0 }
+                      }
+                    },
+                    "subjectSignature": { "type": "string" },
+                    "usedBy": { "type": "string" },
+                    "pairPath": { "type": "string", "description": "Final crop-in-use integration pair for this consumer, not only a raw whole-plate pair." },
+                    "pairKind": { "const": "consumer-integration" }
+                  }
+                }
+              }
+            }
+          },
+          "layerRole": {
+            "type": "string",
+            "description": "Layer-plan role (hybrid: required for FV and any overlapping element). Common values: background-photo, photo-overlay-gradient, primary-html-type, decorative-outline-type, accent-band, vertical-label, foreground-card, dark-bottom-panel, header-nav, cta"
+          },
+          "placementScope": {
+            "enum": ["container-content", "hero-bound", "photo-bound", "viewport-fixed", "viewport-edge", "section-bound-decoration", "page-flow"],
+            "description": "Phase 1 construction ledger owner. Determines whether the element belongs to the responsive content container, hero section, photo focal region, viewport/global chrome, section seam, or page-flow composition."
+          },
+          "anchorTarget": {
+            "type": "string",
+            "description": "What this layered/decorative/fixed element is positioned relative to, e.g. 'hero', 'viewport-left', 'hero-photo.face-zone', 'hero-bottom', 'cta.free-word'. This is an intent anchor, not CSS coordinates."
+          },
+          "relationshipToPreserve": {
+            "type": "string",
+            "description": "The visual relationship that must survive responsiveness, e.g. 'bubble stays above subject shoulder and never crosses face', 'LISTEN watermark anchors to viewport right and hero bottom', 'underline follows the word 無料'."
+          },
+          "responsiveBehavior": {
+            "type": "string",
+            "description": "How the relationship adapts at 390/768/1024/1440/1728 widths: stack/re-anchor/shrink/release/fixed-to-header/hidden-with-waiver/etc."
+          },
+          "positioning": {
+            "enum": ["flow", "absolute", "fixed", "sticky"],
+            "description": "layout mechanism decided in the placement ledger + layer plan. flow is the default; absolute/fixed/sticky only for declared decorations, global UI, and true overlaps"
+          },
+          "backgroundBehavior": {
+            "enum": ["full-bleed", "framed", "crop", "generated"],
+            "description": "for image/background elements: full-bleed = seamless background layer (never a framed card); framed = intentional card/frame; crop = cropped asset in a box; generated = regenerated asset used as background"
+          },
+          "pixelDiffForeground": {
+            "type": "boolean",
+            "description": "true only for an opaque FV foreground surface whose comp/build pixels should be carved back into comparison after a generated full-frame photo mask is applied. Structural glyphs remain masked separately."
+          },
+          "pixelDiffForegroundReason": {
+            "type": "string",
+            "description": "Why this foreground is sufficiently opaque and source-comparable to re-include in masked pixel QA."
+          },
+          "pixelDiffForegroundExclusion": {
+            "type": "object",
+            "description": "Explicit reason an FV foreground candidate is not an opaque pixel-comparable surface. It remains governed by crop/box evidence.",
+            "required": ["reason", "pairPath"],
+            "properties": {
+              "reason": { "type": "string" },
+              "pairPath": { "type": "string" }
+            }
+          },
+          "zLayer": { "type": "integer", "description": "stacking order in the layer plan; higher sits on top" },
+          "overlaps": { "type": "array", "items": { "type": "string" }, "description": "ids of elements this one overlaps (stacking intent)" },
+          "overlapIntent": {
+            "type": "string",
+            "description": "WHY the overlap exists / what it must look like, e.g. 'heading sits on photo, left-bottom, photo darkened by gradient for contrast'. Declared overlaps are design; undeclared overlaps found by visual-check are defects."
+          },
+          "blendMode": { "type": "string", "description": "CSS mix-blend-mode / background-blend-mode if the layer plan requires one" },
+          "mustNotCover": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "ids this element must never visually cover (e.g. photo-overlay must not cover hero heading; heading must not cover a person's face region). Checked by visual-check.mjs."
+          },
+          "mustStayBehind": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "ids that must paint above this decorative/background element even when their rectangles intentionally overlap. visual-check compares stacking order."
+          },
+          "addition": {
+            "type": "boolean",
+            "description": "true = this element is NOT in the comp; the handoff/user requires it (decision rail, sticky CTA, legal note). Additions are excluded from fidelity evidence — they go in the section review's separate additions table, never as detail verdicts — and must carry mustNotCover (principle 12). Requires additionReason."
+          },
+          "additionReason": {
+            "type": "string",
+            "description": "for addition=true: which user/handoff requirement demands this element (quote or cite it)"
+          },
+          "intentAdjustment": {
+            "type": "string",
+            "description": "recorded deviation from the comp adopted for readability/CVR/brand reasons AFTER the section passed review in the comp's own terms: what deviates and which user requirement demands it. An unrecorded deviation is a drop (Phase 5). Never mixed into fidelity residuals."
+          },
+          "typeSpec": {
+            "type": "object",
+            "description": "Phase 1 type-spec carry-over for display text (fv-critical lockups): the measured typographic contract, so distortion is checkable — box diff sees the per-line span elements; this records the intent behind them.",
+            "properties": {
+              "letterformClass": { "enum": ["gothic", "mincho", "rounded", "display", "monospace", "script", "other"], "description": "Classify the source glyphs from a zoom crop BEFORE choosing candidates. A gothic source rebuilt in mincho is a class mismatch even when its bbox passes." },
+              "weightClass": { "type": "string", "description": "e.g. 'display gothic 900', 'mincho B1 700'" },
+              "fontBakeoffEvidence": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "type": "string" }, "description": "Readable crop-pair paths for 2–3 class-matched font candidates and the chosen face." },
+              "expectedVisualLineCount": { "type": "integer", "minimum": 1, "description": "Rendered visual line count measured from the comp at manifest.viewport.width. Kept separate from the number of span/script runs." },
+              "expectedRunCount": { "type": "integer", "minimum": 1, "description": "Number of declared scriptRuns. This is not a visual line count; contract_doctor checks it against scriptRuns length." },
+              "expectedLineCount": { "type": "integer", "minimum": 1, "deprecated": true, "description": "Deprecated ambiguous field. Migrate to expectedVisualLineCount; use expectedRunCount for span/script-run count." },
+              "scaleSteps": { "type": "string", "description": "in-line size ratios bound to words, e.g. '「らが」 0.6x of kanji; AI 1.12x'" },
+              "scriptRuns": {
+                "type": "array",
+                "description": "typographic run elements inside the display lockup: Latin acronym, numeral, kanji anchor, kana/particle, unit suffix, accented word. Each named run should have its own element entry and bbox when fv-critical.",
+                "items": { "type": "string" }
+              },
+              "opticalRatios": {
+                "type": "string",
+                "description": "measured visible glyph-height ratios and baseline offsets vs the anchor run, e.g. 'AI 1.10x kanji, y -0.02em; へ 0.68x kanji'. These are optical targets, not nominal CSS font-size ratios."
+              },
+              "tracking": { "type": "string", "description": "letter-spacing class/value, e.g. '-0.02em tight display'" },
+              "leading": { "type": "string", "description": "line-height, e.g. '1.05'" },
+              "sourceImpression": {
+                "type": "object",
+                "description": "Measured section-heading impression. The source ratios override generic labels such as 'bold gothic'; implementation states must reproduce scale, air, density, and hierarchy within QA tolerances.",
+                "required": ["sourceFrameWidth", "sourceFrameHeight", "sourceBlockWidthRatio", "sourceBlockHeightRatio", "sourceMaxLineWidthRatio", "sourceGlyphHeightRatio", "sourceTrackingEm", "sourceLineAdvanceRatio", "sourceInkDensity", "viewportMaxSizeRatio", "jumpRatios", "implementationScaleBounds", "evidencePath"],
+                "properties": {
+                  "sourceFrameWidth": { "type": "number", "exclusiveMinimum": 0 },
+                  "sourceFrameHeight": { "type": "number", "exclusiveMinimum": 0 },
+                  "sourceBlockWidthRatio": { "type": "number", "exclusiveMinimum": 0 },
+                  "sourceBlockHeightRatio": { "type": "number", "exclusiveMinimum": 0 },
+                  "sourceMaxLineWidthRatio": { "type": "number", "exclusiveMinimum": 0 },
+                  "sourceGlyphHeightRatio": { "type": "number", "exclusiveMinimum": 0 },
+                  "sourceTrackingEm": { "type": "number" },
+                  "sourceLineAdvanceRatio": { "type": "number", "exclusiveMinimum": 0 },
+                  "sourceInkDensity": { "type": "number", "exclusiveMinimum": 0 },
+                  "viewportMaxSizeRatio": { "type": "number", "exclusiveMinimum": 0 },
+                  "jumpRatios": {
+                    "type": "object",
+                    "required": ["toLead", "toBody", "toLabel"],
+                    "properties": {
+                      "toLead": { "type": "number", "exclusiveMinimum": 0 },
+                      "toBody": { "type": "number", "exclusiveMinimum": 0 },
+                      "toLabel": { "type": "number", "exclusiveMinimum": 0 }
+                    }
+                  },
+                  "implementationScaleBounds": {
+                    "type": "object",
+                    "required": ["desktopMaxSizePx", "mobileMinSizePx"],
+                    "properties": {
+                      "desktopMaxSizePx": { "type": "number", "exclusiveMinimum": 0 },
+                      "mobileMinSizePx": { "type": "number", "exclusiveMinimum": 0 }
+                    }
+                  },
+                  "evidencePath": { "type": "string", "minLength": 1 }
+                }
+              },
+              "accents": { "type": "string", "description": "per-word color/marker/underline devices and which words they bind to" },
+              "lineStartPunctuation": {
+                "type": "object",
+                "description": "Optical alignment contract for opening Japanese brackets/quotes at a line start. Preserve the glyph but correct the apparent left gap with hanging-punctuation or flow-safe margin/text-indent, proved by a crop pair.",
+                "required": ["glyph", "method", "evidencePath"],
+                "properties": {
+                  "glyph": { "type": "string" },
+                  "method": { "enum": ["hanging-punctuation", "negative-inline-margin", "text-indent", "none-needed"] },
+                  "adjustment": { "type": "string" },
+                  "evidencePath": { "type": "string" }
+                }
+              },
+              "transformException": {
+                "type": "object",
+                "description": "Narrow exception to the no-transform rule. Structural text defaults to no CSS transform. Only source-evidenced decorative lettering or an intentional display-distortion device may opt in; visual-check requires every field.",
+                "required": ["allowed", "scope", "reason", "evidencePath"],
+                "properties": {
+                  "allowed": { "const": true },
+                  "scope": { "enum": ["decorative-lettering", "source-intent-display"] },
+                  "reason": { "type": "string" },
+                  "evidencePath": { "type": "string" }
+                }
+              },
+              "lines": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "data-el of each rendered line's span element (per-line comp bboxes live in those elements' entries)"
+              },
+              "responsiveLineContracts": {
+                "type": "array",
+                "description": "Viewport-specific Japanese line contracts. Each row records expected rendered line strings and forbidden orphan fragments; visual-check measures real text-node client rects.",
+                "items": {
+                  "type": "object",
+                  "required": ["minWidth", "maxWidth", "expectedLines", "forbiddenOrphanFragments"],
+                  "properties": {
+                    "minWidth": { "type": "integer", "minimum": 1 },
+                    "maxWidth": { "type": "integer", "minimum": 1 },
+                    "expectedLines": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+                    "forbiddenOrphanFragments": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                  }
+                }
+              }
+            }
+          },
+          "notes": { "type": "string" }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mediaClass": { "enum": ["photo", "illustration"] },
+                "qaPriority": { "enum": ["fv-critical", "section-critical"] }
+              },
+              "required": ["mediaClass", "qaPriority"]
+            },
+            "then": {
+              "required": ["assetStrategy", "visualRole", "sourceFrameHasForegroundOverlap", "cleanLayeredSource"]
+            }
+          },
+          {
+            "if": {
+              "properties": { "sourceFrameHasForegroundOverlap": { "const": true } },
+              "required": ["sourceFrameHasForegroundOverlap"]
+            },
+            "then": { "required": ["sourceFrameOverlapKinds"] }
+          },
+          {
+            "if": { "properties": { "assetStrategy": { "const": "crop-asset" } }, "required": ["assetStrategy"] },
+            "then": { "required": ["croppedAsset", "cropPreservesComposition"] }
+          },
+          {
+            "if": { "properties": { "assetStrategy": { "const": "generated" } }, "required": ["assetStrategy"] },
+            "then": { "required": ["generatedAsset"] }
+          },
+          {
+            "if": { "properties": { "assetStrategy": { "const": "replace" } }, "required": ["assetStrategy"] },
+            "then": { "required": ["replacedAsset"] }
+          },
+          {
+            "if": { "properties": { "mediaClass": { "const": "lettering-decal" } }, "required": ["mediaClass"] },
+            "then": { "required": ["text", "textRecreation", "assetStrategy", "letteringProof"] }
+          },
+          {
+            "if": { "properties": { "pixelDiffForeground": { "const": true } }, "required": ["pixelDiffForeground"] },
+            "then": { "required": ["pixelDiffForegroundReason"] }
+          },
+          {
+            "if": { "required": ["assetSurfaceContract"] },
+            "then": { "required": ["surfaceIntegration"] }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": { "const": "heading" },
+                "qaPriority": { "enum": ["fv-critical", "section-critical"] }
+              },
+              "required": ["role", "qaPriority"]
+            },
+            "then": { "required": ["typeSpec"] }
+          },
+          {
+            "not": {
+              "properties": {
+                "assetStrategy": { "const": "crop-asset" },
+                "sourceFrameHasForegroundOverlap": { "const": true },
+                "cleanLayeredSource": { "const": false }
+              },
+              "required": ["assetStrategy", "sourceFrameHasForegroundOverlap", "cleanLayeredSource"]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "rectXYWH": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "type": "number", "exclusiveMinimum": 0 },
+        "h": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "humanIntent": {
+      "type": "object",
+      "required": ["reason", "userQuote"],
+      "properties": {
+        "reason": { "type": "string" },
+        "userQuote": { "type": "string", "description": "Verbatim human words; agent-authored paraphrases do not waive the Web-native page-flow gate." }
+      }
+    }
+  }
+}

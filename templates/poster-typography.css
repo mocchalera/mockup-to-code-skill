@@ -1,0 +1,188 @@
+/* poster-typography.css — implementation patterns for poster-like FV/hero
+   sections reconstructed from AI-generated comps (hybrid mode).
+
+   Policy: the comp's baked-in glyphs are NEVER shipped, but their typographic
+   TREATMENT — size, tightness, leading, tilt, outline, band, vertical
+   writing, spacing — is reproduced faithfully in CSS. Content lives in HTML;
+   appearance lives here. Copy these patterns and bind values to manifest
+   tokens; include AFTER base.css. */
+
+/* ---- 1. Giant Japanese display heading -------------------------------
+   The FV protagonist. Tight tracking + tight leading + palt is what makes
+   generated comps look "designed"; browser defaults make it look cheap. */
+.poster-heading {
+  font-family: var(--font-heading);
+  font-size: clamp(2.5rem, 9vw, var(--fv-heading-size, 96px));
+  font-weight: 900;
+  line-height: 1.08;               /* generated comps run 1.0–1.15 */
+  letter-spacing: -0.02em;         /* JP display type is set tight */
+  font-feature-settings: "palt";   /* proportional kerning for kana/kanji */
+  text-wrap: balance;
+}
+
+/* ---- 1b. In-line scale steps (type spec) ------------------------------
+   Comps routinely set kana/particles smaller than the kanji (「社長自らが」
+   with 「らが」 at ~0.6em) and unit suffixes smaller than their numbers
+   (「55,000円」「2026.7.30 Thu」). Measure the ratio off the comp
+   (Phase 1 type spec) and rebuild with spans — a flat single-size heading
+   where the comp steps sizes reads timid. */
+.poster-heading .step-dn { font-size: var(--step-dn, 0.62em); }
+.num-unit { font-size: var(--num-unit, 0.5em); font-weight: 700; }
+
+/* ---- 1c. Script/word-run optical correction ---------------------------
+   Mixed Japanese display lockups are tuned by visible glyph height, not
+   nominal font-size. A Latin acronym like "AI" may render optically small
+   beside kanji at 1em; measure the comp run against the kanji anchor, then
+   tune --run-size / --run-y / --run-tracking and prove it with crop pairs. */
+.type-lockup {
+  font-synthesis: none;
+}
+.type-run {
+  display: inline-block;
+  font-size: calc(1em * var(--run-size, 1));
+  line-height: var(--run-leading, 0.95);
+  letter-spacing: var(--run-tracking, inherit);
+  vertical-align: var(--run-align, baseline);
+}
+.type-run.type-latin {
+  font-family: var(--font-latin-display, var(--font-latin, Inter, sans-serif));
+  font-size: calc(1em * var(--latin-optical-size, var(--run-size, 1.1)));
+}
+.type-run.type-number {
+  font-family: var(--font-number-display, var(--font-latin, Inter, sans-serif));
+  font-size: calc(1em * var(--number-optical-size, var(--run-size, 1.08)));
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.type-run.type-kanji { font-size: calc(1em * var(--kanji-optical-size, var(--run-size, 1))); }
+.type-run.type-kana,
+.type-run.type-particle {
+  font-size: calc(1em * var(--kana-optical-size, var(--run-size, 0.68)));
+  vertical-align: var(--kana-run-align, -0.06em);
+}
+.type-run.type-unit {
+  font-size: calc(1em * var(--unit-optical-size, var(--run-size, 0.5)));
+  vertical-align: var(--unit-run-align, -0.08em);
+}
+
+/* ---- 1d. Optical line-start punctuation ------------------------------
+   Opening Japanese brackets carry blank side-bearing that can make a line
+   look indented while its DOM x is correct. Keep the real glyph and correct
+   the INK edge in flow; prove the value against a zoomed crop. */
+.optical-hang-first { hanging-punctuation: first allow-end; }
+.optical-hang-first-fallback {
+  text-indent: var(--opening-punct-indent, -0.45em);
+  padding-inline-start: var(--opening-punct-compensation, 0.45em);
+}
+
+/* ---- 1e. Serif / mincho accent role -----------------------------------
+   Comps often switch dates, prices or one decision word to a serif face
+   against a gothic body. The switch is a device — honor it with a real
+   loaded mincho/serif, never fake it with weight. */
+.serif-accent {
+  font-family: var(--font-serif, "Shippori Mincho", "Noto Serif JP", serif);
+  font-weight: 600;
+}
+
+/* ---- 2. Outline (stroke-only) decorative type ------------------------
+   Oversized transparent type behind/around the photo. Keep it decorative:
+   aria-hidden, never the real heading. */
+.outline-type {
+  -webkit-text-stroke: 1.5px var(--outline-color, currentColor);
+  color: transparent;
+  paint-order: stroke fill;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+@supports not (-webkit-text-stroke: 1px black) {
+  .outline-type { color: var(--outline-color, currentColor); opacity: 0.25; }
+}
+
+/* ---- 3. Highlight band (marker / accent-band behind text) ------------
+   The yellow-band-under-heading pattern. box-decoration-break keeps the
+   band per-line when the text wraps. */
+.highlight-band {
+  display: inline;
+  background: linear-gradient(transparent 8%, var(--band-color, #ffd900) 8%, var(--band-color, #ffd900) 92%, transparent 92%);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding-inline: 0.15em;
+}
+/* full-height band variant (text on solid chip) */
+.accent-chip {
+  display: inline-block;
+  background: var(--band-color, #ffd900);
+  color: var(--band-text, #111);
+  padding: 0.1em 0.5em;
+}
+
+/* ---- 4. Vertical writing label (縦書きラベル) -------------------------
+   Edge-of-viewport vertical labels: year, slogan, section name. */
+.vertical-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;         /* upright kana/kanji, rotated latin */
+  font-feature-settings: "palt", "vpal";
+  letter-spacing: 0.12em;
+}
+.vertical-label .tcy {              /* 縦中横 for 2-digit numbers */
+  text-combine-upright: all;
+}
+
+/* ---- 5. Thin tracked English caption ---------------------------------
+   Small latin caption/eyebrow: thin weight + wide tracking + uppercase. */
+.caption-en {
+  font-family: var(--font-latin, Inter, sans-serif);
+  font-size: var(--caption-size, 12px);
+  font-weight: 300;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+/* ---- 6. Signature-style text ------------------------------------------
+   Handwritten/signature accent. Use a real script font (e.g. from Google
+   Fonts) — do not crop the comp's signature unless it is a real logo. */
+.signature {
+  font-family: var(--font-script, "Caveat", cursive);
+  font-weight: 500;
+  transform: rotate(var(--signature-tilt, -4deg));
+  transform-origin: left bottom;
+  display: inline-block;
+}
+
+/* ---- 7. Tilted / rotated display fragment ----------------------------- */
+.tilted { transform: rotate(var(--tilt, -3deg)); display: inline-block; }
+
+/* ---- 8. FV layer scaffolding ------------------------------------------
+   Structure for the poster FV: photo is a full-bleed BACKGROUND LAYER
+   (never a framed <img> card); a gradient overlay guarantees text
+   contrast; HTML type stacks above. Bind z-indexes to manifest zLayer. */
+.fv {
+  position: relative;
+  isolation: isolate;              /* contain blend modes / z-index */
+  min-height: var(--fv-height, 100svh);
+  overflow: hidden;
+}
+.fv-bg {                            /* layerRole: background-photo */
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+}
+.fv-bg > img { width: 100%; height: 100%; object-fit: cover; object-position: var(--fv-focus, center); }
+.fv-overlay {                       /* layerRole: photo-overlay-gradient */
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--fv-gradient, linear-gradient(to top, rgb(0 0 0 / 0.55) 0%, rgb(0 0 0 / 0.1) 45%, transparent 70%));
+  pointer-events: none;
+}
+.fv-content {                       /* layerRole: primary-html-type */
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- 9. Dark bottom panel ---------------------------------------------
+   Comp pattern: FV closes with a dark info band (CTA, year, credits). */
+.dark-panel {
+  background: var(--panel-bg, #111);
+  color: var(--panel-text, #fff);
+}

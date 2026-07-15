@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+  /* GROUND TRUTH design — every value below is a known-correct answer.
+     container 1200 (margins 120 @1440) / hero pad-top 120 / h1 88px
+     photo 480x520 @ x=840 / cards y: grid 3x368 gap 48 / accent #f4552f */
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: Arial, "DejaVu Sans", sans-serif; color: #111111; background: #ffffff; }
+  .container { width: 1200px; margin-inline: auto; }
+
+  header { height: 88px; display: flex; align-items: center; }
+  .logo { font-size: 22px; font-weight: bold; }
+  nav { margin-left: auto; display: flex; gap: 40px; font-size: 15px; }
+
+  .hero { background: #f7f5f2; }
+  .hero .container { position: relative; height: 640px; }
+  .hero-title { position: absolute; left: 0; top: 120px; width: 680px;
+    font-size: 88px; line-height: 1.05; letter-spacing: -0.01em; }
+  .hero-lead { position: absolute; left: 0; top: 340px; width: 520px;
+    font-size: 18px; line-height: 1.8; color: #444; }
+  .hero-cta { position: absolute; left: 0; top: 480px; display: inline-block;
+    background: #f4552f; color: #fff; font-size: 17px; font-weight: bold;
+    padding: 22px 56px; border-radius: 999px; }
+  .hero-photo { position: absolute; left: 720px; top: 60px; width: 480px; height: 520px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #2b6b8f 0%, #7fb7a3 55%, #e8d9a0 100%); }
+
+  .works { padding: 120px 0 140px; }
+  .works-heading { font-size: 40px; }
+  .works-grid { margin-top: 64px; display: grid;
+    grid-template-columns: repeat(3, 368px); gap: 48px; }
+  .card { background: #f0ede8; border-radius: 16px; padding: 32px; }
+  .thumb { height: 180px; border-radius: 8px; margin-bottom: 24px;
+    background: linear-gradient(160deg, #8f8ad1, #d18aa5); }
+  .card h3 { font-size: 22px; margin-bottom: 12px; }
+  .card p { font-size: 15px; line-height: 1.7; color: #555; }
+
+  footer { margin-top: 0; height: 160px; background: #111111; }
+</style>
+</head>
+<body>
+<header data-el="header">
+  <div class="container" style="display:flex;align-items:center;">
+    <div class="logo" data-el="logo">STUDIO KAMO</div>
+    <nav><span>Works</span><span>Service</span><span>About</span><span>Contact</span></nav>
+  </div>
+</header>
+
+<section class="hero" data-el="hero">
+  <div class="container">
+    <h1 class="hero-title" data-el="hero-title">Design that<br>actually ships.</h1>
+    <p class="hero-lead" data-el="hero-lead">We turn beautiful static mockups into living, breathing web pages — measured, not guessed. Every margin has a reason.</p>
+    <a class="hero-cta" data-el="hero-cta">View our works</a>
+    <div class="hero-photo" data-el="hero-photo"></div>
+  </div>
+</section>
+
+<section class="works" data-el="works">
+  <div class="container">
+    <h2 class="works-heading" data-el="works-heading">Selected Works</h2>
+    <div class="works-grid" data-el="works-grid">
+      <div class="card" data-el="card-1"><div class="thumb"></div><h3>Aurora Fintech</h3><p>Brand site renewal with a measured design system and tight typography.</p></div>
+      <div class="card" data-el="card-2"><div class="thumb"></div><h3>Kamo Coffee</h3><p>E-commerce experience where every gap sits on the spacing scale.</p></div>
+      <div class="card" data-el="card-3"><div class="thumb"></div><h3>Form &amp; Field</h3><p>Editorial platform balancing oversized type with calm whitespace.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer data-el="footer"></footer>
+</body>
+</html>

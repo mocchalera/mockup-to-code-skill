@@ -1,0 +1,14 @@
+node_modules/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Local render/test outputs
+test/work/
+test/site/
+reports/
+work/
+
+# Browser/runtime caches
+.cache/
+.playwright/

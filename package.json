@@ -1,0 +1,25 @@
+{
+  "name": "mockup-to-code",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agent skill for measurable, high-fidelity mockup-to-responsive-HTML/CSS reconstruction.",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "python3 test/run_mockup_pipeline_tests.py && python3 test/run_prompt_receipt_tests.py && python3 test/run_contract_doctor_tests.py && python3 test/run_asset_preflight_tests.py && python3 test/run_page_flow_check_tests.py && python3 test/run_artifact_check_tests.py && python3 test/run_completion_gate_tests.py && python3 test/run_motion_check_tests.py && python3 test/run_v7_script_tests.py && python3 test/run_pixel_diff_coverage_tests.py && bash test/run_sprite_split_tests.sh"
+  },
+  "keywords": [
+    "agent-skill",
+    "design-to-code",
+    "html",
+    "playwright",
+    "responsive-design",
+    "visual-regression"
+  ],
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright-core": "^1.61.1"
+  }
+}
