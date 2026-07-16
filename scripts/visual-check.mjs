@@ -23,12 +23,28 @@
  *                  position:absolute|fixed and span >=98% of the viewport width
  *                  (a full-bleed hero photo must be a background LAYER, not a card)
  *   - must-not-cover: declared mustNotCover pairs do not intersect
+ *   - micro-geometry: declared circles stay round, triangles keep exactly
+ *                  three vertices, and attention rays sit outside their
+ *                  target on the declared side while aligning radially
+ *   - surface-edge-contact: source-evidenced full-bleed card artwork actually
+ *                  reaches the declared consumer edges instead of inheriting
+ *                  generic card padding
  *   - layout-law: absolute/fixed/sticky [data-el] elements must be declared
  *                  with matching positioning or use an allowed decorative/layer role
  *   - typography-transform: structural manifest text may not use CSS
  *                  transform to scale/skew/translate into its measured box;
  *                  a documented source-intent/decorative exception is required
  *   - font-family: the rendered family must contain the frozen manifest family
+ *   - font-face-load: non-system critical type must resolve to a loaded face;
+ *                  a fallback rendered under the requested family string fails
+ *   - font-weight-face: computed/requested weight must be a delivered static
+ *                  face or fall inside the declared variable-weight range
+ *   - typography-hierarchy: source-measured size and weight contrast between
+ *                  display/lead/label roles must survive in the browser
+ *   - typography-whitespace: source-measured negative space between text
+ *                  blocks may not collapse into generic section spacing
+ *   - typography-extreme-scale: deliberately oversized dominant type may not
+ *                  be timidly capped below its source viewport ratio
  *   - typography-line-count: fv-critical structural text keeps the comp's
  *                  expectedVisualLineCount at the canonical manifest viewport
  *   - text-overlap: substantial structural-text intersections are hard failures
@@ -164,7 +180,7 @@ try {
     await settleLazyImages(page);
     await page.waitForTimeout(150);
 
-    const r = await page.evaluate(({ elements, detailInventory, sectionEls, pageSectionContracts, minHeadingPx, isMobile, runDeadGutter, canonicalWidth, strictHybrid }) => {
+    const r = await page.evaluate(({ elements, detailInventory, typographyComposition, sectionEls, pageSectionContracts, minHeadingPx, isMobile, runDeadGutter, canonicalWidth, strictHybrid }) => {
       const norm = (s) => (s || '').replace(/\s+/g, '');
       const rectOf = (el) => {
         const e = document.querySelector(`[data-el="${el}"]`);
@@ -224,6 +240,23 @@ try {
         entry.mediaClass !== 'lettering-decal' &&
         entry.textRecreation !== 'lettering-decal'
       );
+      const fontWeightNumber = (value) => {
+        if (String(value).toLowerCase() === 'normal') return 400;
+        if (String(value).toLowerCase() === 'bold') return 700;
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      const normalizedFontFamily = (value) => String(value || '')
+        .replace(/["']/g, '').trim().toLowerCase();
+      const deliveredFontFaces = [...document.fonts].map((face) => {
+        const weights = String(face.weight || '400').match(/\d+(?:\.\d+)?/g)?.map(Number) || [400];
+        return {
+          family: normalizedFontFamily(face.family),
+          minWeight: Math.min(...weights),
+          maxWeight: Math.max(...weights),
+          status: face.status,
+        };
+      });
       const transformExceptionValid = (entry) => {
         const ex = entry?.typeSpec?.transformException;
         return Boolean(
@@ -653,6 +686,177 @@ try {
         });
       }
 
+      // Small decoration often carries more meaning than its area suggests.
+      // Bind data-el to the primitive/group itself so the browser can reject
+      // a stretched circle, a trapezoid standing in for a triangle, or rays
+      // that begin inside a numeral instead of sitting outside it.
+      for (const entry of elements) {
+        const micro = entry.decorativeCraft?.microGeometry;
+        if (!micro) continue;
+        const host = document.querySelector(`[data-el="${entry.el}"]`);
+        if (!host) continue;
+        const hostRect = rectBox(host);
+        if (micro.kind === 'circle') {
+          const error = Math.abs(hostRect.width - hostRect.height) /
+            Math.max(1, Math.max(hostRect.width, hostRect.height));
+          if (error > micro.maxAspectRatioError) {
+            violations.push({
+              check: 'micro-geometry-circle', id: entry.id, el: entry.el,
+              detail: { width: hostRect.width, height: hostRect.height,
+                aspectRatioError: Math.round(error * 10000) / 10000,
+                maxAspectRatioError: micro.maxAspectRatioError,
+                instruction: 'Bind data-el to the circle primitive and give it a fixed/aspect-ratio:1 box with flex-shrink:0.' },
+            });
+          }
+        } else if (micro.kind === 'triangle') {
+          const polygon = host.matches('polygon') ? host : host.querySelector('polygon');
+          let vertexCount = polygon?.points?.numberOfItems || 0;
+          if (!vertexCount) {
+            const clip = String(getComputedStyle(host).clipPath || '');
+            const match = clip.match(/^polygon\((.*)\)$/i);
+            vertexCount = match ? match[1].split(',').filter((part) => part.trim()).length : 0;
+          }
+          if (vertexCount !== micro.polygonVertexCount) {
+            violations.push({
+              check: 'micro-geometry-triangle', id: entry.id, el: entry.el,
+              detail: { actualVertexCount: vertexCount,
+                expectedVertexCount: micro.polygonVertexCount,
+                instruction: 'Use an SVG polygon or clip-path polygon with exactly three measured vertices; do not leave a trapezoid.' },
+            });
+          }
+        } else if (micro.kind === 'radial-rays') {
+          const targetEntry = byId[micro.targetId];
+          const target = targetEntry ? document.querySelector(`[data-el="${targetEntry.el}"]`) : null;
+          let rays = [];
+          try { rays = [...host.querySelectorAll(micro.raySelector)]; } catch {
+            violations.push({ check: 'micro-geometry-radial-rays', id: entry.id, el: entry.el,
+              detail: { instruction: `Invalid raySelector: ${micro.raySelector}` } });
+            continue;
+          }
+          if (!target || rays.length !== micro.rayCount) {
+            violations.push({
+              check: 'micro-geometry-radial-rays', id: entry.id, el: entry.el,
+              detail: { targetFound: Boolean(target), actualRayCount: rays.length,
+                expectedRayCount: micro.rayCount },
+            });
+            continue;
+          }
+          const targetRect = rectBox(target);
+          const targetCenter = {
+            x: (targetRect.left + targetRect.right) / 2,
+            y: (targetRect.top + targetRect.bottom) / 2,
+          };
+          const rayRows = rays.map((ray) => {
+            const rect = rectBox(ray);
+            return { ray, rect, center: { x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 } };
+          });
+          const average = rayRows.reduce((sum, row) => ({
+            x: sum.x + row.center.x / rayRows.length,
+            y: sum.y + row.center.y / rayRows.length,
+          }), { x: 0, y: 0 });
+          const dx = average.x - targetCenter.x;
+          const dy = average.y - targetCenter.y;
+          const regionMatches = ({
+            'upper-right': dx > 0 && dy < 0,
+            'upper-left': dx < 0 && dy < 0,
+            'lower-right': dx > 0 && dy > 0,
+            'lower-left': dx < 0 && dy > 0,
+            above: dy < 0,
+            below: dy > 0,
+            left: dx < 0,
+            right: dx > 0,
+          })[micro.placementRegion] === true;
+          if (!regionMatches) {
+            violations.push({
+              check: 'micro-geometry-radial-placement', id: entry.id, el: entry.el,
+              detail: { placementRegion: micro.placementRegion, offsetFromTargetCenter: { x: dx, y: dy } },
+            });
+          }
+          if (micro.mustNotOverlapTarget) {
+            for (const row of rayRows) {
+              const rayBox = { x: row.rect.left, y: row.rect.top, w: row.rect.width, h: row.rect.height };
+              const targetBox = { x: targetRect.left, y: targetRect.top, w: targetRect.width, h: targetRect.height };
+              if (intersect(rayBox, targetBox) > 0) {
+                violations.push({
+                  check: 'micro-geometry-radial-overlap', id: entry.id, el: entry.el,
+                  detail: { targetId: micro.targetId,
+                    instruction: 'The numeral center is a direction reference, not the ray origin; move each ray outside the numeral.' },
+                });
+                break;
+              }
+            }
+          }
+          if (micro.directionMode === 'radiate-away') {
+            const badDirections = [];
+            for (const [index, row] of rayRows.entries()) {
+              const cs = getComputedStyle(row.ray);
+              const matrix = new DOMMatrixReadOnly(cs.transform === 'none' ? undefined : cs.transform);
+              const localHorizontal = parseFloat(cs.width) >= parseFloat(cs.height);
+              let axis = localHorizontal ? { x: matrix.a, y: matrix.b } : { x: matrix.c, y: matrix.d };
+              const axisLength = Math.hypot(axis.x, axis.y) || 1;
+              axis = { x: axis.x / axisLength, y: axis.y / axisLength };
+              let radial = { x: row.center.x - targetCenter.x, y: row.center.y - targetCenter.y };
+              const radialLength = Math.hypot(radial.x, radial.y) || 1;
+              radial = { x: radial.x / radialLength, y: radial.y / radialLength };
+              const dot = Math.min(1, Math.abs(axis.x * radial.x + axis.y * radial.y));
+              const errorDeg = Math.acos(dot) * 180 / Math.PI;
+              if (errorDeg > micro.maxDirectionErrorDeg) {
+                badDirections.push({ index, errorDeg: Math.round(errorDeg * 10) / 10 });
+              }
+            }
+            if (badDirections.length) {
+              violations.push({
+                check: 'micro-geometry-radial-direction', id: entry.id, el: entry.el,
+                detail: { badDirections, maxDirectionErrorDeg: micro.maxDirectionErrorDeg },
+              });
+            }
+          }
+          if (micro.sharedOrigin === false && rayRows.length > 1) {
+            let minSeparation = Infinity;
+            for (let i = 0; i < rayRows.length; i++) {
+              for (let j = i + 1; j < rayRows.length; j++) {
+                minSeparation = Math.min(minSeparation, Math.hypot(
+                  rayRows[i].center.x - rayRows[j].center.x,
+                  rayRows[i].center.y - rayRows[j].center.y,
+                ));
+              }
+            }
+            if (minSeparation < micro.minRayCenterSeparationPx) {
+              violations.push({
+                check: 'micro-geometry-radial-origin', id: entry.id, el: entry.el,
+                detail: { minRayCenterSeparationPx: minSeparation,
+                  required: micro.minRayCenterSeparationPx,
+                  instruction: 'Place ray centers along an invisible outer arc; do not make all bars share one point.' },
+              });
+            }
+          }
+        }
+      }
+
+      for (const entry of elements) {
+        const contact = entry.surfaceIntegration?.edgeContact;
+        if (!contact) continue;
+        const art = document.querySelector(`[data-el="${entry.el}"]`);
+        const ownerEntry = byId[contact.ownerId];
+        const owner = ownerEntry ? document.querySelector(`[data-el="${ownerEntry.el}"]`) : null;
+        if (!art || !owner) continue;
+        const a = rectBox(art); const b = rectBox(owner);
+        const gaps = {
+          top: Math.abs(a.top - b.top), right: Math.abs(a.right - b.right),
+          bottom: Math.abs(a.bottom - b.bottom), left: Math.abs(a.left - b.left),
+        };
+        const failed = contact.edges
+          .filter((edge) => gaps[edge] > contact.maxGapPx)
+          .map((edge) => ({ edge, gapPx: Math.round(gaps[edge] * 10) / 10 }));
+        if (failed.length) {
+          violations.push({
+            check: 'surface-edge-contact', id: entry.id, el: entry.el,
+            detail: { ownerId: contact.ownerId, failed, maxGapPx: contact.maxGapPx,
+              instruction: 'Remove generic card padding from the artwork layer and position the caption independently.' },
+          });
+        }
+      }
+
       if (strictHybrid) {
         for (const node of document.body.querySelectorAll('*')) {
           const cs = getComputedStyle(node);
@@ -711,6 +915,46 @@ try {
             el: entry.el,
             detail: `rendered font-family '${cs.fontFamily}' does not contain frozen manifest family '${entry.text.fontFamily}'`,
           });
+        }
+        const fontSelection = entry.typeSpec?.fontSelection;
+        if (fontSelection) {
+          const selectedFamily = normalizedFontFamily(fontSelection.selectedFamily);
+          const requestedWeight = fontWeightNumber(fontSelection.requestedWeight);
+          const computedWeight = fontWeightNumber(cs.fontWeight);
+          if (fontSelection.selectedSource !== 'system') {
+            const loadedFace = deliveredFontFaces.some((face) =>
+              face.family === selectedFamily &&
+              face.status === 'loaded' &&
+              requestedWeight !== null &&
+              requestedWeight >= face.minWeight &&
+              requestedWeight <= face.maxWeight
+            );
+            if (!loadedFace) {
+              violations.push({
+                check: 'font-face-load', id: entry.id, el: entry.el,
+                detail: {
+                  selectedFamily: fontSelection.selectedFamily,
+                  selectedSource: fontSelection.selectedSource,
+                  requestedWeight,
+                  computedFamily: cs.fontFamily,
+                  deliveredFaces: deliveredFontFaces.filter((face) => face.family === selectedFamily),
+                  instruction: 'Load the chosen webfont face before fidelity QA; a family string that silently falls back is not a typography match.',
+                },
+              });
+            }
+          }
+          if (requestedWeight !== null && computedWeight !== null && Math.abs(computedWeight - requestedWeight) > 1) {
+            violations.push({
+              check: 'font-weight-face', id: entry.id, el: entry.el,
+              detail: {
+                requestedWeight,
+                computedWeight,
+                availableWeights: fontSelection.availableWeights || [],
+                variableWeightRange: fontSelection.variableWeightRange || null,
+                instruction: 'Deliver and apply the measured role weight; do not let the browser synthesize or downgrade it.',
+              },
+            });
+          }
         }
         const expectedLineCount = entry.typeSpec?.expectedVisualLineCount;
         if (entry.qaPriority === 'fv-critical' &&
@@ -784,6 +1028,94 @@ try {
               instruction: 'Repair with a class-matched font, size, weight, tracking, leading, run-level sizing, or flow spacing; do not distort/translate structural text to pass box diff.',
             },
           });
+        }
+      }
+
+      // Typography is a section-wide composition. Checking each text box in
+      // isolation still permits the common failure where display, card titles,
+      // labels, and microcopy all converge on one safe middle size/weight.
+      for (const composition of typographyComposition || []) {
+        const dominantEntry = byId[composition.dominantElementId];
+        const dominantNode = dominantEntry?.el
+          ? document.querySelector(`[data-el="${dominantEntry.el}"]`)
+          : null;
+        const dominantRect = dominantNode?.getBoundingClientRect();
+        for (const edge of composition.hierarchyEdges || []) {
+          const fromEntry = byId[edge.from];
+          const toEntry = byId[edge.to];
+          const fromNode = fromEntry?.el ? document.querySelector(`[data-el="${fromEntry.el}"]`) : null;
+          const toNode = toEntry?.el ? document.querySelector(`[data-el="${toEntry.el}"]`) : null;
+          if (!fromNode || !toNode) continue;
+          const fromStyle = getComputedStyle(fromNode);
+          const toStyle = getComputedStyle(toNode);
+          const fromSize = Number.parseFloat(fromStyle.fontSize);
+          const toSize = Number.parseFloat(toStyle.fontSize);
+          const fromWeight = fontWeightNumber(fromStyle.fontWeight);
+          const toWeight = fontWeightNumber(toStyle.fontWeight);
+          const actualSizeRatio = fromSize / Math.max(0.01, toSize);
+          const actualWeightDelta = fromWeight !== null && toWeight !== null ? fromWeight - toWeight : null;
+          const sizeAllowed = Math.max(0.04, Math.abs(edge.sourceSizeRatio) * edge.sizeTolerance);
+          const sizeDrift = Math.abs(actualSizeRatio - edge.sourceSizeRatio);
+          const weightDrift = actualWeightDelta === null ? Infinity : Math.abs(actualWeightDelta - edge.sourceWeightDelta);
+          if (sizeDrift > sizeAllowed || weightDrift > edge.weightTolerance) {
+            violations.push({
+              check: 'typography-hierarchy',
+              id: `${edge.from}->${edge.to}`,
+              detail: {
+                sourceSizeRatio: edge.sourceSizeRatio,
+                actualSizeRatio: Math.round(actualSizeRatio * 1000) / 1000,
+                sizeTolerance: edge.sizeTolerance,
+                sourceWeightDelta: edge.sourceWeightDelta,
+                actualWeightDelta,
+                weightTolerance: edge.weightTolerance,
+                instruction: 'Restore the comp hierarchy with role-specific family/weight/size; do not normalize all copy into one safe scale.',
+              },
+            });
+          }
+        }
+        for (const edge of composition.whitespaceEdges || []) {
+          const beforeEntry = byId[edge.before];
+          const afterEntry = byId[edge.after];
+          const beforeNode = beforeEntry?.el ? document.querySelector(`[data-el="${beforeEntry.el}"]`) : null;
+          const afterNode = afterEntry?.el ? document.querySelector(`[data-el="${afterEntry.el}"]`) : null;
+          if (!beforeNode || !afterNode || !dominantRect?.height) continue;
+          const beforeRect = beforeNode.getBoundingClientRect();
+          const afterRect = afterNode.getBoundingClientRect();
+          const actualGap = afterRect.top - beforeRect.bottom;
+          const actualRatio = actualGap / dominantRect.height;
+          if (Math.abs(actualRatio - edge.sourceGapToDominantRatio) > edge.tolerance) {
+            violations.push({
+              check: 'typography-whitespace',
+              id: `${edge.before}->${edge.after}`,
+              detail: {
+                sourceGapToDominantRatio: edge.sourceGapToDominantRatio,
+                actualGapToDominantRatio: Math.round(actualRatio * 1000) / 1000,
+                actualGapPx: Math.round(actualGap * 10) / 10,
+                tolerance: edge.tolerance,
+                instruction: 'Tune measured block spacing and line-height; negative space is part of the typography, not leftover section padding.',
+              },
+            });
+          }
+        }
+        const extreme = composition.extremeScale;
+        if (
+          extreme?.required === true && dominantRect?.height &&
+          Number.isFinite(canonicalWidth) && Math.abs(window.innerWidth - canonicalWidth) <= 1
+        ) {
+          const actualRatio = dominantRect.height / window.innerHeight;
+          const minimumRatio = extreme.sourceDominantBlockHeightRatio * (1 - extreme.maxScaleLossRatio);
+          if (actualRatio < minimumRatio) {
+            violations.push({
+              check: 'typography-extreme-scale', id: composition.dominantElementId,
+              detail: {
+                sourceDominantBlockHeightRatio: extreme.sourceDominantBlockHeightRatio,
+                maxScaleLossRatio: extreme.maxScaleLossRatio,
+                minimumRatio: Math.round(minimumRatio * 10000) / 10000,
+                actualRatio: Math.round(actualRatio * 10000) / 10000,
+                instruction: 'Do not cap the display role into a tasteful middle size. Preserve the source poster-scale footprint and rebalance surrounding whitespace.',
+              },
+            });
+          }
         }
       }
 
@@ -909,6 +1241,7 @@ try {
     }, {
       elements: manifest.elements || [],
       detailInventory: manifest.detailInventory || [],
+      typographyComposition: manifest.typographyComposition || [],
       sectionEls,
       pageSectionContracts,
       minHeadingPx,

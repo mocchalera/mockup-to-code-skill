@@ -15,7 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 WORK_ROOT = ROOT / "test" / "work" / "contract_doctor"
 TEMPLATE = ROOT / "templates" / "manifest.hybrid-multiframe.min.json"
 sys.path.insert(0, str(ROOT / "scripts"))
-from contract_doctor import validate_typography_impression
+from contract_doctor import (
+    validate_typography_composition,
+    validate_typography_font_selection,
+    validate_typography_impression,
+)
 
 
 def write_json(path, data):
@@ -58,6 +62,11 @@ class ContractDoctorTests(unittest.TestCase):
             "reports/photo-asset-review.md",
             "reports/crops/hero-photo-asset-pair.png",
             "reports/crops/hero-photo-source-2x.png",
+            "reports/crops/hero-lockup-source-2x.png",
+            "reports/crops/font-bakeoff-a.png",
+            "reports/crops/font-bakeoff-b.png",
+            "reports/crops/font-fallback-hero-heading.png",
+            "reports/crops/font-fallback-cta-label.png",
         )
         for value in files:
             path = self.work / value
@@ -236,6 +245,48 @@ class ContractDoctorTests(unittest.TestCase):
         checks = []
         validate_typography_impression(manifest, checks)
         self.assertIn("typography-template-copy-risk", {row["id"] for row in checks})
+
+    def test_typography_font_selection_blocks_system_only_or_unavailable_weight(self):
+        manifest = self.manifest()
+        self.write_manifest(manifest)
+        self.materialize_asset_evidence()
+        manifest = read_json(self.work / "manifest.json")
+        heading = next(row for row in manifest["elements"] if row.get("id") == "hero.heading")
+        selection = heading["typeSpec"]["fontSelection"]
+        selection["selectedFamily"] = "Arial"
+        selection["selectedSource"] = "system"
+        selection["requestedWeight"] = 850
+        selection["availableWeights"] = [400, 700]
+        selection["delivery"]["strategy"] = "system"
+        selection["candidates"] = [
+            {"family": "Arial", "source": "system", "weight": 700, "evidencePath": "reports/crops/font-bakeoff-a.png"},
+            {"family": "Helvetica", "source": "system", "weight": 700, "evidencePath": "reports/crops/font-bakeoff-b.png"},
+        ]
+        heading["text"]["fontFamily"] = "Arial"
+        checks = []
+        validate_typography_font_selection(manifest, self.work, checks)
+        issue = next(row for row in checks if row["id"] == "typography-font-selection")
+        serialized = json.dumps(issue)
+        self.assertIn("non-system", serialized)
+        self.assertIn("requestedWeight", serialized)
+        self.assertIn("systemFontException", serialized)
+
+    def test_typography_composition_blocks_flat_or_incomplete_role_graph(self):
+        manifest = self.manifest()
+        self.write_manifest(manifest)
+        self.materialize_asset_evidence()
+        manifest = read_json(self.work / "manifest.json")
+        composition = manifest["typographyComposition"][0]
+        composition["hierarchyEdges"] = []
+        composition["whitespaceEdges"] = []
+        composition["extremeScale"]["maxScaleLossRatio"] = 0.7
+        checks = []
+        validate_typography_composition(manifest, self.work, checks)
+        issue = next(row for row in checks if row["id"] == "typography-composition")
+        serialized = json.dumps(issue)
+        self.assertIn("hierarchyEdges", serialized)
+        self.assertIn("whitespaceEdges", serialized)
+        self.assertIn("maxScaleLossRatio", serialized)
 
     def materialize_seam_continuity_report(self, status="ready"):
         source = self.work / "reports" / "seam-source.txt"
@@ -881,6 +932,47 @@ class ContractDoctorTests(unittest.TestCase):
         check = next(row for row in result["checks"] if row["id"] == "asset-overdecomposition-risk")
         self.assertEqual(check["status"], "needs_work")
         self.assertEqual(check["groups"][0]["clipOwner"], "value.card")
+
+    def test_blocks_trapezoid_declared_as_triangle(self):
+        manifest = self.manifest()
+        manifest["elements"].append({
+            "id": "flow.step-corner",
+            "el": "flow-step-corner",
+            "role": "decoration",
+            "priority": "normal",
+            "bbox": {"x": 40, "y": 40, "w": 160, "h": 120},
+            "sourceImage": "mockups/section-02-value.png",
+            "decorativeCraft": {
+                "fieldType": "flat-geometry",
+                "complexityTarget": "one measured three-vertex corner wedge",
+                "medium": "svg",
+                "evidencePath": "reports/crops/value-primary-device-source-2x.png",
+                "microGeometry": {
+                    "kind": "triangle",
+                    "polygonVertexCount": 4,
+                    "evidencePath": "reports/crops/value-primary-device-source-2x.png",
+                },
+            },
+        })
+        self.write_manifest(manifest)
+        self.materialize_asset_evidence()
+
+        result, _ = self.run_doctor(expected_code=2)
+
+        check = next(row for row in result["checks"] if row["id"] == "micro-geometry-contract")
+        self.assertIn("exactly 3", json.dumps(check))
+
+    def test_blocks_background_removal_without_semantic_pixel_protection(self):
+        manifest = self.manifest()
+        photo = next(row for row in manifest["elements"] if row.get("id") == "hero.photo")
+        photo["generatedAsset"]["backgroundRemovalUsed"] = True
+        photo.pop("semanticPixelProtection", None)
+        self.write_manifest(manifest)
+        self.materialize_asset_evidence()
+
+        result, _ = self.run_doctor(expected_code=2)
+
+        self.assertIn("semantic-pixel-protection-missing", {row["id"] for row in result["checks"]})
 
     def test_blocks_multiline_fv_heading_with_wrong_line_box_count(self):
         manifest = self.manifest()

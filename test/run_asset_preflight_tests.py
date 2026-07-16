@@ -402,6 +402,51 @@ class AssetPreflightTests(unittest.TestCase):
         self.assertEqual(receipt["size"], asset.stat().st_size)
         self.assertEqual(receipt["sha256"], hashlib.sha256(asset.read_bytes()).hexdigest())
 
+    def test_blocks_chroma_key_that_erases_protected_lip_color(self):
+        element = self.generated_surface_element("alpha_floating", background=(0, 0, 0, 0))
+        source = self.work / "assets" / "sprite-source.png"
+        master = self.work / "assets" / "sprite-transparent-master.png"
+        lip = (196, 118, 112, 255)
+        write_png(source, border=(28, 245, 214, 255), center=lip)
+        write_png(master, border=(0, 0, 0, 0), center=(196, 118, 112, 0))
+        element["generatedAsset"]["backgroundRemovalUsed"] = True
+        element["semanticPixelProtection"] = {
+            "method": "protected-color-retention",
+            "sourcePath": str(source),
+            "transparentMasterPath": str(master),
+            "reviewPath": str(self.work / "reports" / "crops" / "photo-pair.png"),
+            "protectedSamples": [{
+                "name": "lips", "sourceColor": "#c47670", "colorTolerance": 0,
+                "minMatchedPixels": 20, "minAlpha": 200, "minRetainedRatio": 0.9,
+            }],
+        }
+        result = self.run_preflight({"mode": "hybrid", "elements": [element]}, 2)
+        loss = next(row for row in result["checks"] if row["id"] == "semantic-pixel-loss")
+        self.assertEqual(loss["failedSamples"][0]["name"], "lips")
+        self.assertEqual(loss["failedSamples"][0]["retainedRatio"], 0)
+
+    def test_allows_chroma_key_when_protected_semantic_color_survives(self):
+        element = self.generated_surface_element("alpha_floating", background=(0, 0, 0, 0))
+        source = self.work / "assets" / "sprite-source.png"
+        master = self.work / "assets" / "sprite-transparent-master.png"
+        lip = (196, 118, 112, 255)
+        write_png(source, border=(28, 245, 214, 255), center=lip)
+        write_png(master, border=(0, 0, 0, 0), center=lip)
+        element["generatedAsset"]["backgroundRemovalUsed"] = True
+        element["semanticPixelProtection"] = {
+            "method": "protected-color-retention",
+            "sourcePath": str(source),
+            "transparentMasterPath": str(master),
+            "reviewPath": str(self.work / "reports" / "crops" / "photo-pair.png"),
+            "protectedSamples": [{
+                "name": "lips", "sourceColor": "#c47670", "colorTolerance": 0,
+                "minMatchedPixels": 20, "minAlpha": 200, "minRetainedRatio": 0.9,
+            }],
+        }
+        result = self.run_preflight({"mode": "hybrid", "elements": [element]}, 0)
+        retained = next(row for row in result["checks"] if row["id"] == "semantic-pixels-retained")
+        self.assertTrue(retained["pixelMetrics"]["pass"])
+
     def test_blocks_section_field_demoted_to_an_invented_image_frame(self):
         element = self.generated_surface_element("intentional_frame")
         element["visualRole"] = "background-environment"

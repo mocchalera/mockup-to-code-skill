@@ -337,6 +337,74 @@ h1{margin:0;font-size:52px;line-height:1.05}
         self.assertEqual(violation["detail"]["expected"], 1)
         self.assertGreater(violation["detail"]["actual"], 1)
 
+    def test_visual_check_blocks_family_string_when_webfont_face_is_not_loaded(self):
+        html = """<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;font-family:Arial,sans-serif}.hero{min-height:900px;padding:120px}
+h1{font-family:'Missing Display Face',Arial,sans-serif;font-size:88px;font-weight:700}
+</style></head><body><section class="hero"><h1 data-el="hero-heading">Listening care</h1></section></body></html>"""
+        manifest = {
+            "viewport": {"width": 1440},
+            "elements": [{
+                "id": "hero.heading",
+                "el": "hero-heading",
+                "role": "heading",
+                "qaPriority": "fv-critical",
+                "text": {"content": "Listening care", "fontFamily": "Missing Display Face"},
+                "typeSpec": {
+                    "fontSelection": {
+                        "selectedFamily": "Missing Display Face",
+                        "selectedSource": "google-fonts",
+                        "requestedWeight": 700,
+                        "availableWeights": [700],
+                    }
+                },
+            }],
+        }
+        report, _ = self.run_visual_check(html, manifest, expect_code=1, widths="1440")
+        checks = {row["check"] for row in report["viewports"][0]["violations"]}
+        self.assertIn("font-face-load", checks)
+        self.assertNotIn("font-family", checks)
+
+    def test_visual_check_blocks_flat_typography_hierarchy_whitespace_and_scale(self):
+        html = """<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif}
+.hero{height:900px;padding:140px}.title{margin:0;font-size:48px;line-height:1.1;font-weight:700}
+.label{margin:20px 0 0;font-size:32px;line-height:1.2;font-weight:600}
+</style></head><body><section class="hero">
+<h1 class="title" data-el="hero-title">Listen deeply</h1>
+<p class="label" data-el="hero-label">Apply free</p>
+</section></body></html>"""
+        manifest = {
+            "viewport": {"width": 1440},
+            "elements": [
+                {"id": "hero.title", "el": "hero-title", "role": "heading", "text": {"content": "Listen deeply", "fontFamily": "Arial"}},
+                {"id": "hero.label", "el": "hero-label", "role": "label", "text": {"content": "Apply free", "fontFamily": "Arial"}},
+            ],
+            "typographyComposition": [{
+                "section": "hero",
+                "dominantElementId": "hero.title",
+                "hierarchyEdges": [{
+                    "from": "hero.title", "to": "hero.label",
+                    "sourceSizeRatio": 4.0, "sourceWeightDelta": 400,
+                    "sizeTolerance": 0.1, "weightTolerance": 50,
+                }],
+                "whitespaceEdges": [{
+                    "before": "hero.title", "after": "hero.label",
+                    "sourceGapToDominantRatio": 0.8, "tolerance": 0.1,
+                }],
+                "extremeScale": {
+                    "required": True,
+                    "sourceDominantBlockHeightRatio": 0.2,
+                    "maxScaleLossRatio": 0.1,
+                },
+            }],
+        }
+        report, _ = self.run_visual_check(html, manifest, expect_code=1, widths="1440")
+        checks = {row["check"] for row in report["viewports"][0]["violations"]}
+        self.assertIn("typography-hierarchy", checks)
+        self.assertIn("typography-whitespace", checks)
+        self.assertIn("typography-extreme-scale", checks)
+
     def test_visual_check_blocks_emoji_as_source_specific_line_art(self):
         html = """<!doctype html><html><head><meta charset="utf-8"><style>
 body{margin:0}.card{width:320px;padding:30px}.icon{font-size:64px}
@@ -448,6 +516,87 @@ body{margin:0}.cta{position:relative;height:900px}.cta:after{content:"";position
         report, _ = self.run_visual_check(html, manifest, expect_code=1, widths="1440")
         checks = {row["check"] for row in report["viewports"][0]["violations"]}
         self.assertIn("unevidenced-large-ellipse", checks)
+
+    def test_visual_check_blocks_distorted_circle_trapezoid_and_padded_edge_art(self):
+        html = """<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}body{margin:0}.stage{position:relative;min-height:520px}
+.arrow{width:48px;height:72px;border:3px solid #29836d;border-radius:50%}
+.corner{width:180px;height:120px;background:#52aa8e;clip-path:polygon(0 0,100% 0,72% 100%,0 100%)}
+.card{position:relative;width:320px;height:220px;margin-top:30px;padding:24px;background:#fff;border:1px solid #ddd}
+.art{width:100%;height:100%;background:#def}
+</style></head><body><section class="stage">
+<div class="arrow" data-el="flow-arrow"></div>
+<div class="corner" data-el="step-corner"></div>
+<article class="card" data-el="art-card"><div class="art" data-el="card-art"></div></article>
+</section></body></html>"""
+        manifest = {"elements": [
+            {"id": "flow.arrow", "el": "flow-arrow", "role": "decoration",
+             "decorativeCraft": {"microGeometry": {"kind": "circle", "maxAspectRatioError": 0.02, "evidencePath": "circle.png"}}},
+            {"id": "step.corner", "el": "step-corner", "role": "decoration",
+             "decorativeCraft": {"microGeometry": {"kind": "triangle", "polygonVertexCount": 3, "evidencePath": "triangle.png"}}},
+            {"id": "art.card", "el": "art-card", "role": "container"},
+            {"id": "card.art", "el": "card-art", "role": "image",
+             "surfaceIntegration": {"edgeContact": {"ownerId": "art.card", "edges": ["left", "right", "bottom"], "maxGapPx": 1}}},
+        ]}
+        report, _ = self.run_visual_check(html, manifest, expect_code=1)
+        checks = {row["check"] for row in report["viewports"][0]["violations"]}
+        self.assertIn("micro-geometry-circle", checks)
+        self.assertIn("micro-geometry-triangle", checks)
+        self.assertIn("surface-edge-contact", checks)
+
+    def test_visual_check_blocks_attention_rays_that_grow_from_inside_the_number(self):
+        html = """<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}body{margin:0}.stage{position:relative;min-height:520px}
+.number{position:absolute;left:200px;top:180px;width:90px;height:100px;background:#52aa8e}
+.rays{position:absolute;left:230px;top:205px;width:48px;height:48px}
+.ray{position:absolute;width:4px;height:28px;background:#ffc842;transform-origin:center}
+.ray:nth-child(1){left:10px;top:4px;transform:rotate(45deg)}
+.ray:nth-child(2){left:20px;top:6px;transform:rotate(55deg)}
+.ray:nth-child(3){left:30px;top:10px;transform:rotate(65deg)}
+</style></head><body><section class="stage">
+<div class="number" data-el="step-number"></div>
+<div class="rays" data-el="step-rays"><i class="ray"></i><i class="ray"></i><i class="ray"></i></div>
+</section></body></html>"""
+        manifest = {"elements": [
+            {"id": "step.number", "el": "step-number", "role": "other", "positioning": "absolute"},
+            {"id": "step.rays", "el": "step-rays", "role": "decoration", "positioning": "absolute", "layerRole": "decorative",
+             "decorativeCraft": {"microGeometry": {
+                 "kind": "radial-rays", "evidencePath": "rays.png", "targetId": "step.number",
+                 "placementRegion": "upper-right", "directionMode": "radiate-away", "raySelector": ".ray",
+                 "rayCount": 3, "sharedOrigin": False, "mustNotOverlapTarget": True,
+                 "maxDirectionErrorDeg": 22, "minRayCenterSeparationPx": 8,
+             }}},
+        ]}
+        report, _ = self.run_visual_check(html, manifest, expect_code=1)
+        checks = {row["check"] for row in report["viewports"][0]["violations"]}
+        self.assertIn("micro-geometry-radial-overlap", checks)
+
+    def test_visual_check_allows_separated_upper_right_radial_attention_rays(self):
+        html = """<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}body{margin:0}.stage{position:relative;min-height:520px}
+.number{position:absolute;left:180px;top:210px;width:80px;height:90px;background:#52aa8e}
+.rays{position:absolute;left:275px;top:130px;width:95px;height:80px}
+.ray{position:absolute;width:4px;height:28px;background:#ffc842;transform-origin:center}
+.ray:nth-child(1){left:8px;top:38px;transform:rotate(48deg)}
+.ray:nth-child(2){left:38px;top:18px;transform:rotate(55deg)}
+.ray:nth-child(3){left:70px;top:2px;transform:rotate(61deg)}
+</style></head><body><section class="stage">
+<div class="number" data-el="step-number"></div>
+<div class="rays" data-el="step-rays"><i class="ray"></i><i class="ray"></i><i class="ray"></i></div>
+</section></body></html>"""
+        manifest = {"elements": [
+            {"id": "step.number", "el": "step-number", "role": "other", "positioning": "absolute"},
+            {"id": "step.rays", "el": "step-rays", "role": "decoration", "positioning": "absolute", "layerRole": "decorative",
+             "decorativeCraft": {"microGeometry": {
+                 "kind": "radial-rays", "evidencePath": "rays.png", "targetId": "step.number",
+                 "placementRegion": "upper-right", "directionMode": "radiate-away", "raySelector": ".ray",
+                 "rayCount": 3, "sharedOrigin": False, "mustNotOverlapTarget": True,
+                 "maxDirectionErrorDeg": 25, "minRayCenterSeparationPx": 12,
+             }}},
+        ]}
+        report, _ = self.run_visual_check(html, manifest, expect_code=0)
+        checks = {row["check"] for row in report["viewports"][0]["violations"]}
+        self.assertFalse(any(check.startswith("micro-geometry-radial") for check in checks))
 
     def test_visual_check_centered_flow_page_passes_dead_gutter_and_layout_law(self):
         html = """<!doctype html>

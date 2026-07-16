@@ -34,9 +34,7 @@ not enough to execute a phase correctly.
 for when you need it; these are the difference between a real run and theater:
 
 - Isolate `WORK_ROOT`; normalize every comp before measuring.
-- Photo-led rasters are **regenerated, not faked or dropped**: declare
-  `mediaClass: photo`, generate to a file before any fallback, never reclassify a
-  subject to svg/UI or ship a contaminated crop (rules 6, 13, 23–25).
+- Photo-led rasters are **regenerated, not faked or dropped**: declare `mediaClass: photo`, generate to a file before any fallback, never reclassify a subject to svg/UI or ship a contaminated crop (rules 6, 13, 23–25).
 - Run `asset_preflight.py` after photo asset decisions and before CSS. A crop
   that avoids fused text/UI by narrowing the scene still fails when it changes
   the comp's environment or focal composition (rule 27).
@@ -48,12 +46,7 @@ for when you need it; these are the difference between a real run and theater:
   with CSS transform. For Japanese, mixed-script, vertical, or display-critical
   work, invoke the `typography` skill and bind its run ledger/report into the
   manifest before CSS (rules 22, 28).
-- Start hybrid multi-frame manifests from
-  `templates/manifest.hybrid-multiframe.min.json`, then run
-  `contract_doctor.py --phase pre-css` until it passes. This catches bbox
-  arrays, missing measurement ledgers, global-header ownership mistakes,
-  accidental FV line-wrap freedom, malformed page composition, and incomplete
-  generated-photo evidence before CSS exists.
+- Start hybrid multi-frame manifests from `templates/manifest.hybrid-multiframe.min.json`, then run `contract_doctor.py --phase pre-css` until it passes. This catches malformed geometry, ownership, page-composition, and generated-asset evidence before CSS exists.
 - Ask the pipeline what is legally next: `mockup_pipeline.py --phase next`
   returns one action, detects stale pre-CSS receipts, and caps runs that built
   below-FV DOM before FV convergence.
@@ -80,15 +73,10 @@ for when you need it; these are the difference between a real run and theater:
   `art-directed-bridge`: outgoing environment, opaque destination-owned field,
   one connective motif, and an incoming next-section preview. A readable wave
   crop alone is not continuity proof (rule 43).
-- Inventory fidelity is machine-shaped: every `detailInventory` row maps to a
-  completion disposition, and a different reviewer judges crop pairs without
-  seeing implementation rationale. The lower score controls (rules 33–34).
+- Inventory fidelity is machine-shaped: every `detailInventory` row maps to a completion disposition, and a different reviewer judges crop pairs without seeing implementation rationale. The lower score controls (rules 33–34).
 - Generated card/object rasters declare who owns the frame, background, padding,
   radius, and bleed. A raster panel inside a CSS card is a double-frame defect.
-- Freeze each critical raster's source topology before generation: a visual that
-  owns the section field becomes a copy-space-aware full-field scene plate; an
-  object/exploded diagram/collage that floats on the Web field becomes a real
-  alpha scene including its shadow. Do not use a framed opaque fallback.
+- Freeze each critical raster's source topology before generation: a section field becomes a copy-space-aware full-field plate; a floating object/diagram/collage becomes a real alpha scene including its shadow. Do not use a framed opaque fallback.
 - Large section waves use measured bezier geometry or an off-canvas true-circle
   arc. A convenient stretched ellipse is blocked without source evidence.
 - Critical Japanese headings declare viewport-specific line strings and orphan
@@ -146,6 +134,9 @@ for when you need it; these are the difference between a real run and theater:
 47. **The manifested surface owner must paint visible pixels.** Bind `data-el` to the `<img>`, `<picture>`, or background owner that actually renders a critical raster. An `opacity:0`, hidden, or zero-area duplicate cannot stand in for box measurement while another element paints the asset; `visual-check.mjs` blocks `surface-visible-owner`.
 48. **Preflight binds asset bytes, not only manifest prose.** `asset-preflight.json.inputs.assets` records every adopted raster path, size, and SHA-256. Changing a PNG without rerunning preflight makes pipeline QA stale. After the first valid pre-CSS pass, an asset revision may re-enter pre-CSS with existing implementation files; never touch/delete files to game chronology.
 49. **Topology feedback is a revision, not a CSS exception.** Record affected ids, old/new topology, source evidence, invalidated artifacts, and `remeasure_from_source`. Regenerate the affected asset and rebaseline its expected bbox from the comp or newly approved reference—never from the current DOMRect.
+50. **Small decorative geometry is semantic and executable.** Before CSS, write what the mark means and bind `decorativeCraft.microGeometry` to the actual primitive/group—not its layout wrapper. A circle gets a measured 1:1 tolerance and `flex-shrink:0`; a triangle has exactly three vertices; attention rays name their target, side, count, separation, and radial direction. The target center is a direction reference, not the rays' shared origin: rays sit outside the target on an invisible arc and may not overlap it. `visual-check.mjs` rejects distorted circles, trapezoids, misplaced/shared-origin rays, and wrong ray direction.
+51. **Background removal and card-edge contact preserve source semantics.** When chroma key or post-generation background removal is used, set `generatedAsset.backgroundRemovalUsed:true`, declare `semanticPixelProtection` for vulnerable sampled colors/features (lips, eyes, badges, status dots), and compare the same-size pre-key sheet with the transparent master before splitting; lost protected pixels block preflight. When source artwork intentionally meets card edges, declare `surfaceIntegration.edgeContact` and let the illustration layer reach those edges; position captions independently instead of inheriting generic card padding.
+52. **Typography is a measured role graph, and font delivery is part of fidelity.** For each section with critical type, measure display/lead/body/label/microcopy relationships in `typographyComposition`: glyph/size ratios, weight deltas, line-height/tracking, and negative-space edges (not the CSS `white-space` property). Preserve deliberately extreme scale instead of tastefully clamping it into the middle. Each critical heading/label also binds `typeSpec.fontSelection`: 2+ class-matched candidates with at least one loadable webfont, chosen family/source/real available weight, delivery strategy, and fallback crop. A computed family string is not proof; `visual-check.mjs` rejects unloaded faces, downgraded weights, flattened hierarchy, collapsed/expanded text-block gaps, and timid dominant scale. A system-only choice needs source-evidenced exception.
 
 ## Generated background gate
 
@@ -473,6 +464,7 @@ All scripts under `$SKILL_DIR/scripts/`; outputs under `$WORK_ROOT`.
 | Opaque artwork looks clean alone but creates double padding or a paper-color seam in the card | declare `surfaceIntegration`; inspect real PNG alpha/outer bands/content bounds/edge RGB. Regenerate as `alpha_floating`, bleed or mask the plate, tone-match the edge, or preserve a frame only when the source visibly has one |
 | Manifest calls a source-floating scene `contained_artwork` after generation because alpha was difficult | source topology is frozen from the comp, not chosen from output convenience; asset preflight blocks the mismatch and returns to generation |
 | Below-FV headings all became the same dense ultra-bold style | measure `typeSpec.sourceImpression` per section; reject repeated generic bbox/type signatures, compare viewport-scale and jump ratios, then tune weight/tracking/leading against glyph ink rather than the category label |
+| Webfonts are present but the LP still reads timid or uniformly bold | rule 52: select fonts per role, verify the real face/weight loaded, measure role-to-role size/weight ratios and text-block gaps, and let `typographyComposition` reject safe-middle scaling |
 | Footer/section wave is a stretched `border-radius:50%` oval | replace it with measured bezier geometry or a true off-canvas circle; an ellipse needs source crop + `ellipseException` |
 | Oversized background 「聴」 paints over the heading | manifest the glyph with `data-el`, `zLayer`, and `mustStayBehind`; unregistered large absolute text fails visual-check |
 | Japanese heading strands 「て」/「へ」/unit on its own line | declare `responsiveLineContracts`; compare actual rendered line strings and forbidden orphan fragments at each width |

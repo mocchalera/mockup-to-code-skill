@@ -187,6 +187,54 @@ neighbor contamination is a blocked asset, even if the final card hides it at
 one viewport. `assetSurfaceContract` keeps card fill, radius, shadow, and
 padding in CSS so generated cells cannot create a double frame.
 
+### Semantic micro-geometry pass
+
+Small marks are not filler. Before implementing a number accent, flow arrow,
+corner wedge, sparkle, or check ornament, write one literal sentence about its
+visual grammar: for example, “three short bars sit outside the number on its
+upper-right and align with radii projected from the number center.” Then bind
+`decorativeCraft.microGeometry` to the actual circle, polygon, or ray group.
+The reference target controls direction; it does not automatically become an
+origin or attachment point.
+
+- A circle primitive uses an equal-width/height box, `aspect-ratio:1`, and
+  `flex:0 0 auto`. Do not bind the circle contract to a connector wrapper that
+  also contains horizontal rules.
+- A triangular corner accent uses an SVG polygon or `clip-path:polygon()` with
+  exactly three measured vertices. A four-point wedge is a trapezoid even when
+  it feels “roughly diagonal”.
+- Radial attention bars are separate DOM children. Declare the target id,
+  placement region, ray count, minimum center separation, and angular
+  tolerance. Place their centers along an invisible arc outside the target;
+  never make the bars share a point inside a numeral.
+- A flow connector is one routed SVG path through a visible gutter. Keep its
+  arrow circle as a separately manifested true circle, preserve stroke width
+  with `vector-effect:non-scaling-stroke`, and capture the whole route from
+  source card to destination card. A line that disappears behind cards or
+  jumps between rows is missing, even if both endpoints exist.
+
+Large CTA gift cards, dots, leaves, and other overlays remain manifested
+decorations with `mustNotCover` targets for the numeral, offer copy, CTA label,
+and legal note. “Decorative” never grants permission to cover content.
+
+### Background-removal semantic protection and edge contact
+
+Chroma-key removal is destructive editing. Choose a key color far from skin,
+lips, eyes, clothing accents, badges, and status colors. When removal is used,
+set `generatedAsset.backgroundRemovalUsed:true`; preserve the same-size pre-key
+sheet and transparent master; declare vulnerable colors under
+`semanticPixelProtection.protectedSamples`; and run asset preflight before
+sprite splitting. If protected pixels fail retention, regenerate with a safer
+key or use native alpha. Do not weaken the threshold until the report turns
+green—the missing lip/eye/detail is the defect the gate is meant to preserve.
+
+Decide the final illustration fit from the source, not from a default card
+component. If the artwork touches the card's left/right/bottom edges, declare
+`surfaceIntegration.edgeContact` for those edges and remove padding from the
+art layer. Keep heading and caption blocks in their own padded flow layer so
+the illustration can be edge-to-edge without pushing the copy against the
+frame.
+
 `assetUnit` answers “what belongs in one generated composition.” It does not
 answer “how that composition meets the web surface.” Every critical raster
 therefore freezes source topology before generation and also declares
@@ -388,6 +436,26 @@ and interline gap. `expectedVisualLineCount: 2` is not convergence. If the ink
 regions overlap unexpectedly or the total block is timid/dense versus the
 source, repair family, font-size, tracking, leading, and run sizes, then render
 again before creating any below-FV section DOM.
+
+Implement the section's `typographyComposition` before micro-decoration.
+Treat it as a graph: make the dominant role hit its source footprint first,
+then tune each connected role to the measured size ratio and weight delta,
+then tune the measured gaps between text blocks. Use family and real delivered
+weight to control lightness/heaviness before compensating with tracking or
+line-height. Negative space belongs to the type system; it is not whatever
+remains after applying a generic section `padding-block`.
+
+If `extremeScale.required` is true, allow the type to be extreme. A convenient
+`clamp()` is acceptable only when its canonical render still meets the source
+dominant-block ratio. Do not shrink a source 6:1 display-to-label relationship
+into 2:1, then spend the recovered area on empty canvas. Large type plus
+carefully differentiated secondary roles is the intended composition.
+
+Load the selected face before visual tuning. Match the `fontSelection`
+delivery contract, request the actual selected weights, and inspect three
+states: loaded face, delayed swap, and blocked/fallback. A browser-synthesized
+bold or silent fallback changes counters, stroke color, wrapping, and every
+downstream spacing decision; do not tune around it.
 
 For display lockups, implement the Phase 1 line/run decomposition literally:
 each line and each measured typographic run is a real span with its own

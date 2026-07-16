@@ -408,6 +408,299 @@ def validate_typography_impression(manifest: dict, checks: list[dict]) -> None:
         )
 
 
+def validate_typography_font_selection(manifest: dict, root: Path, checks: list[dict]) -> None:
+    """Require a real role-specific face/weight decision, not a CSS family string."""
+    section_frames = [
+        row for row in manifest.get("referenceImages", [])
+        if isinstance(row, dict) and row.get("use") == "section-comp"
+    ]
+    if manifest.get("mode", "hybrid") != "hybrid" or len(section_frames) < 2:
+        return
+    targets = [
+        row for row in manifest.get("elements", [])
+        if row.get("role") in ("heading", "label")
+        and row.get("qaPriority") in ("fv-critical", "section-critical")
+        and nonempty_string((row.get("text") or {}).get("content"))
+    ]
+    invalid = []
+    source_strategy = {
+        "google-fonts": {"external-stylesheet"},
+        "hosted-webfont": {"external-stylesheet"},
+        "self-hosted": {"self-hosted"},
+        "local-webfont": {"local", "self-hosted"},
+        "system": {"system"},
+    }
+    for row in targets:
+        selection = (row.get("typeSpec") or {}).get("fontSelection")
+        reasons = []
+        if not isinstance(selection, dict):
+            reasons.append("typeSpec.fontSelection missing")
+        else:
+            selected_family = selection.get("selectedFamily")
+            declared_family = (row.get("text") or {}).get("fontFamily")
+            if not nonempty_string(selected_family):
+                reasons.append("selectedFamily missing")
+            elif nonempty_string(declared_family) and selected_family.strip() != declared_family.strip():
+                reasons.append("selectedFamily must equal text.fontFamily")
+            selected_source = selection.get("selectedSource")
+            if selected_source not in source_strategy:
+                reasons.append("selectedSource invalid")
+            requested_weight = selection.get("requestedWeight")
+            available = selection.get("availableWeights")
+            variable = selection.get("variableWeightRange")
+            if not isinstance(available, list) or not available or not all(
+                isinstance(weight, int) and not isinstance(weight, bool) and 1 <= weight <= 1000
+                for weight in available
+            ):
+                reasons.append("availableWeights needs real integer faces from 1 to 1000")
+            if isinstance(variable, dict) and (
+                not isinstance(variable.get("min"), int)
+                or not isinstance(variable.get("max"), int)
+                or variable["min"] > variable["max"]
+            ):
+                reasons.append("variableWeightRange must have ordered integer min/max")
+            weight_available = (
+                isinstance(available, list)
+                and requested_weight in available
+            ) or (
+                isinstance(variable, dict)
+                and finite_number(variable.get("min"))
+                and finite_number(variable.get("max"))
+                and finite_number(requested_weight)
+                and variable["min"] <= requested_weight <= variable["max"]
+            )
+            if not isinstance(requested_weight, int) or isinstance(requested_weight, bool) or not (1 <= requested_weight <= 1000):
+                reasons.append("requestedWeight must be an integer from 1 to 1000")
+            elif not weight_available:
+                reasons.append("requestedWeight is not an available static face or variable-axis value")
+            candidates = selection.get("candidates")
+            if not isinstance(candidates, list) or len(candidates) < 2:
+                reasons.append("at least two font candidates are required")
+                candidates = []
+            families = {
+                candidate.get("family").strip().lower()
+                for candidate in candidates
+                if isinstance(candidate, dict) and nonempty_string(candidate.get("family"))
+            }
+            if len(families) < 2:
+                reasons.append("font candidates must contain at least two distinct families")
+            selected_candidates = [
+                candidate for candidate in candidates
+                if isinstance(candidate, dict)
+                and nonempty_string(selected_family)
+                and candidate.get("family", "").strip().lower() == selected_family.strip().lower()
+                and candidate.get("source") == selected_source
+                and candidate.get("weight") == requested_weight
+            ]
+            if not selected_candidates:
+                reasons.append("selected family/source/weight must appear in candidates")
+            if candidates and not any(
+                isinstance(candidate, dict) and candidate.get("source") != "system"
+                for candidate in candidates
+            ):
+                reasons.append("bake-off needs at least one loadable non-system webfont candidate")
+            for index, candidate in enumerate(candidates):
+                if not isinstance(candidate, dict):
+                    reasons.append(f"candidate {index} must be an object")
+                    continue
+                evidence = resolve_evidence_path(root, candidate.get("evidencePath"))
+                if evidence is None or not evidence.is_file():
+                    reasons.append(f"candidate {index} evidencePath is missing")
+            delivery = selection.get("delivery")
+            if not isinstance(delivery, dict):
+                reasons.append("delivery contract missing")
+            else:
+                strategy = delivery.get("strategy")
+                if selected_source in source_strategy and strategy not in source_strategy[selected_source]:
+                    reasons.append("delivery.strategy disagrees with selectedSource")
+                if delivery.get("fontDisplay") not in ("swap", "optional", "block", "fallback", "auto"):
+                    reasons.append("delivery.fontDisplay invalid")
+                if not nonempty_string(delivery.get("sourceRef")):
+                    reasons.append("delivery.sourceRef missing")
+            fallback_families = selection.get("fallbackFamilies")
+            if not isinstance(fallback_families, list) or not fallback_families or not all(
+                nonempty_string(value) for value in fallback_families
+            ):
+                reasons.append("fallbackFamilies needs at least one named fallback")
+            fallback_evidence = resolve_evidence_path(root, selection.get("fallbackEvidencePath"))
+            if fallback_evidence is None or not fallback_evidence.is_file():
+                reasons.append("fallbackEvidencePath is missing")
+            if selected_source == "system":
+                exception = selection.get("systemFontException")
+                exception_evidence = resolve_evidence_path(
+                    root, (exception or {}).get("evidencePath") if isinstance(exception, dict) else None
+                )
+                if not (
+                    isinstance(exception, dict)
+                    and exception.get("allowed") is True
+                    and nonempty_string(exception.get("reason"))
+                    and exception_evidence is not None
+                    and exception_evidence.is_file()
+                ):
+                    reasons.append("system font selection needs source-evidenced systemFontException")
+        if reasons:
+            invalid.append({"id": row.get("id"), "reasons": reasons})
+    if invalid:
+        checks.append(
+            finding(
+                "blocked",
+                "typography-font-selection",
+                "critical type needs a class-matched bake-off, real face/weight delivery, and measured fallback proof",
+                elements=invalid,
+            )
+        )
+
+
+def validate_typography_composition(manifest: dict, root: Path, checks: list[dict]) -> None:
+    """Freeze hierarchy and negative space across roles so type cannot flatten."""
+    reference_rows = [
+        row for row in manifest.get("referenceImages", [])
+        if isinstance(row, dict) and row.get("use") == "section-comp"
+    ]
+    if manifest.get("mode", "hybrid") != "hybrid" or len(reference_rows) < 2:
+        return
+    elements = {
+        row.get("id"): row for row in manifest.get("elements", [])
+        if isinstance(row, dict) and nonempty_string(row.get("id"))
+    }
+    source_to_section = {
+        row.get("path"): row.get("section") for row in reference_rows
+        if nonempty_string(row.get("path")) and nonempty_string(row.get("section"))
+    }
+    required_sections = {
+        source_to_section.get(row.get("sourceImage"))
+        for row in elements.values()
+        if row.get("role") == "heading"
+        and row.get("qaPriority") in ("fv-critical", "section-critical")
+        and nonempty_string((row.get("text") or {}).get("content"))
+    }
+    required_sections.discard(None)
+    compositions = manifest.get("typographyComposition")
+    if not isinstance(compositions, list):
+        compositions = []
+    by_section = {
+        row.get("section"): row for row in compositions
+        if isinstance(row, dict) and nonempty_string(row.get("section"))
+    }
+    invalid = []
+    duplicate_sections = sorted({
+        row.get("section") for row in compositions
+        if isinstance(row, dict)
+        and nonempty_string(row.get("section"))
+        and sum(1 for candidate in compositions if isinstance(candidate, dict) and candidate.get("section") == row.get("section")) > 1
+    })
+    if duplicate_sections:
+        invalid.append({"sections": duplicate_sections, "reasons": ["typographyComposition sections must be unique"]})
+    for section in sorted(required_sections):
+        row = by_section.get(section)
+        reasons = []
+        if not isinstance(row, dict):
+            invalid.append({"section": section, "reasons": ["typographyComposition row missing"]})
+            continue
+        expected_source = next(
+            (path for path, candidate_section in source_to_section.items() if candidate_section == section),
+            None,
+        )
+        if row.get("sourceImage") != expected_source:
+            reasons.append("sourceImage must equal the authoritative section-comp path")
+        dominant = row.get("dominantElementId")
+        roles = row.get("roles")
+        if dominant not in elements:
+            reasons.append("dominantElementId does not resolve to a manifest element")
+        if not isinstance(roles, list) or len(roles) < 2:
+            reasons.append("roles needs at least two measured text roles")
+            roles = []
+        role_ids = set()
+        for index, role in enumerate(roles):
+            if not isinstance(role, dict):
+                reasons.append(f"role {index} must be an object")
+                continue
+            element_id = role.get("elementId")
+            role_ids.add(element_id)
+            if element_id not in elements:
+                reasons.append(f"role {index} elementId does not resolve")
+            for field in ("sourceGlyphHeightPx", "sourceLineHeightRatio"):
+                if not finite_number(role.get(field)) or role[field] <= 0:
+                    reasons.append(f"role {index} {field} must be positive")
+            weight = role.get("sourceFontWeight")
+            if not isinstance(weight, int) or isinstance(weight, bool) or not (1 <= weight <= 1000):
+                reasons.append(f"role {index} sourceFontWeight invalid")
+            if not finite_number(role.get("sourceTrackingEm")):
+                reasons.append(f"role {index} sourceTrackingEm must be measured")
+            if role.get("semanticRole") not in ("display", "lead", "body", "label", "microcopy", "numeral", "unit"):
+                reasons.append(f"role {index} semanticRole invalid")
+        if len(role_ids) != len(roles):
+            reasons.append("roles must use unique elementId values")
+        if dominant not in role_ids:
+            reasons.append("dominantElementId must appear in roles")
+        hierarchy = row.get("hierarchyEdges")
+        if not isinstance(hierarchy, list) or not hierarchy:
+            reasons.append("hierarchyEdges needs at least one role-to-role measurement")
+            hierarchy = []
+        if hierarchy and not any(edge.get("from") == dominant for edge in hierarchy if isinstance(edge, dict)):
+            reasons.append("hierarchyEdges must compare the dominant role to another role")
+        for index, edge in enumerate(hierarchy):
+            if not isinstance(edge, dict):
+                reasons.append(f"hierarchy edge {index} must be an object")
+                continue
+            if edge.get("from") not in role_ids or edge.get("to") not in role_ids or edge.get("from") == edge.get("to"):
+                reasons.append(f"hierarchy edge {index} endpoints are invalid")
+            if not finite_number(edge.get("sourceSizeRatio")) or edge["sourceSizeRatio"] <= 0:
+                reasons.append(f"hierarchy edge {index} sourceSizeRatio invalid")
+            if not finite_number(edge.get("sourceWeightDelta")):
+                reasons.append(f"hierarchy edge {index} sourceWeightDelta missing")
+            if not finite_number(edge.get("sizeTolerance")) or not (0 <= edge["sizeTolerance"] <= 0.35):
+                reasons.append(f"hierarchy edge {index} sizeTolerance invalid")
+            if not finite_number(edge.get("weightTolerance")) or not (0 <= edge["weightTolerance"] <= 300):
+                reasons.append(f"hierarchy edge {index} weightTolerance invalid")
+        whitespace = row.get("whitespaceEdges")
+        if not isinstance(whitespace, list) or not whitespace:
+            reasons.append("whitespaceEdges needs at least one measured text-block gap")
+            whitespace = []
+        if whitespace and not any(
+            dominant in (edge.get("before"), edge.get("after"))
+            for edge in whitespace if isinstance(edge, dict)
+        ):
+            reasons.append("whitespaceEdges must include the dominant text block")
+        for index, edge in enumerate(whitespace):
+            if not isinstance(edge, dict):
+                reasons.append(f"whitespace edge {index} must be an object")
+                continue
+            if edge.get("before") not in role_ids or edge.get("after") not in role_ids or edge.get("before") == edge.get("after"):
+                reasons.append(f"whitespace edge {index} endpoints are invalid")
+            gap = edge.get("sourceGapToDominantRatio")
+            tolerance = edge.get("tolerance")
+            if not finite_number(gap) or gap < -1:
+                reasons.append(f"whitespace edge {index} sourceGapToDominantRatio invalid")
+            if not finite_number(tolerance) or not (0 <= tolerance <= 0.35):
+                reasons.append(f"whitespace edge {index} tolerance invalid")
+        extreme = row.get("extremeScale")
+        if not isinstance(extreme, dict):
+            reasons.append("extremeScale contract missing")
+        else:
+            if not isinstance(extreme.get("required"), bool):
+                reasons.append("extremeScale.required must be boolean")
+            if not finite_number(extreme.get("sourceDominantBlockHeightRatio")) or extreme["sourceDominantBlockHeightRatio"] <= 0:
+                reasons.append("sourceDominantBlockHeightRatio must be positive")
+            loss = extreme.get("maxScaleLossRatio")
+            if not finite_number(loss) or not (0 <= loss <= 0.35):
+                reasons.append("maxScaleLossRatio must be from 0 to 0.35")
+        evidence = resolve_evidence_path(root, row.get("evidencePath"))
+        if evidence is None or not evidence.is_file():
+            reasons.append("typographyComposition evidencePath is missing")
+        if reasons:
+            invalid.append({"section": section, "reasons": reasons})
+    if invalid:
+        checks.append(
+            finding(
+                "blocked",
+                "typography-composition",
+                "section typography needs executable role hierarchy, weight contrast, negative-space, and extreme-scale measurements",
+                sections=invalid,
+            )
+        )
+
+
 def validate_detail_inventory(manifest: dict, checks: list[dict]) -> None:
     references = manifest.get("referenceImages", [])
     section_comps = [
@@ -1588,6 +1881,94 @@ def validate_surface_decoration_and_line_contracts(
                         f"decorative element '{row_id}' uses an ellipse without source evidence; use a measured bezier or off-canvas true-circle arc",
                         elementId=row_id,
                     ))
+            micro = craft.get("microGeometry")
+            if isinstance(micro, dict):
+                kind = micro.get("kind")
+                reasons = []
+                if not nonempty_string(micro.get("evidencePath")):
+                    reasons.append("evidencePath is required")
+                if kind == "circle":
+                    error = micro.get("maxAspectRatioError")
+                    if not finite_number(error) or error < 0 or error > 0.25:
+                        reasons.append("circle needs maxAspectRatioError between 0 and 0.25")
+                elif kind == "triangle":
+                    if micro.get("polygonVertexCount") != 3:
+                        reasons.append("triangle polygonVertexCount must be exactly 3")
+                elif kind == "radial-rays":
+                    target_id = micro.get("targetId")
+                    if target_id not in by_id:
+                        reasons.append("radial-rays targetId must name an existing manifest id")
+                    required = (
+                        "placementRegion", "directionMode", "raySelector", "rayCount",
+                        "sharedOrigin", "mustNotOverlapTarget", "maxDirectionErrorDeg",
+                        "minRayCenterSeparationPx",
+                    )
+                    missing = [field for field in required if field not in micro]
+                    if missing:
+                        reasons.append(f"radial-rays missing fields: {', '.join(missing)}")
+                    if micro.get("directionMode") != "radiate-away":
+                        reasons.append("attention rays must declare directionMode=radiate-away")
+                    if micro.get("sharedOrigin") is not False:
+                        reasons.append("attention rays sit on an outer arc; sharedOrigin must be false")
+                    if micro.get("mustNotOverlapTarget") is not True:
+                        reasons.append("attention rays mustNotOverlapTarget must be true")
+                else:
+                    reasons.append("microGeometry.kind must be circle, triangle, or radial-rays")
+                if reasons:
+                    checks.append(finding(
+                        "blocked", "micro-geometry-contract",
+                        f"decorative element '{row_id}' has an invalid semantic micro-geometry contract",
+                        elementId=row_id, reasons=reasons,
+                    ))
+
+        integration = row.get("surfaceIntegration")
+        if isinstance(integration, dict) and isinstance(integration.get("edgeContact"), dict):
+            contact = integration["edgeContact"]
+            owner_id = contact.get("ownerId")
+            reasons = []
+            if owner_id not in by_id:
+                reasons.append("ownerId must name an existing manifest id")
+            edges = contact.get("edges")
+            if not isinstance(edges, list) or not edges or any(
+                edge not in {"top", "right", "bottom", "left"} for edge in edges
+            ):
+                reasons.append("edges must contain top/right/bottom/left values")
+            max_gap = contact.get("maxGapPx")
+            if not finite_number(max_gap) or max_gap < 0:
+                reasons.append("maxGapPx must be a non-negative number")
+            if reasons:
+                checks.append(finding(
+                    "blocked", "surface-edge-contact-contract",
+                    f"'{row_id}' has an invalid edge-contact contract",
+                    elementId=row_id, reasons=reasons,
+                ))
+
+        generated = row.get("generatedAsset")
+        if isinstance(generated, dict) and generated.get("backgroundRemovalUsed") is True:
+            protection = row.get("semanticPixelProtection")
+            if not isinstance(protection, dict):
+                checks.append(finding(
+                    "blocked", "semantic-pixel-protection-missing",
+                    f"'{row_id}' used background removal but does not protect semantic colors/features",
+                    elementId=row_id,
+                ))
+            else:
+                reasons = []
+                if protection.get("method") != "protected-color-retention":
+                    reasons.append("method must be protected-color-retention")
+                for field in ("sourcePath", "transparentMasterPath", "reviewPath"):
+                    path = resolve_evidence_path(root, protection.get(field))
+                    if path is None or not path.is_file() or path.stat().st_size == 0:
+                        reasons.append(f"{field} must be a readable file")
+                samples = protection.get("protectedSamples")
+                if not isinstance(samples, list) or not samples:
+                    reasons.append("protectedSamples must be non-empty")
+                if reasons:
+                    checks.append(finding(
+                        "blocked", "semantic-pixel-protection-contract",
+                        f"'{row_id}' has incomplete background-removal protection evidence",
+                        elementId=row_id, reasons=reasons,
+                    ))
 
         for target_id in row.get("mustStayBehind") or []:
             target = by_id.get(target_id)
@@ -1819,6 +2200,8 @@ def main() -> None:
         validate_global_ownership(manifest, checks)
         validate_fv_text_lines(manifest, checks)
         validate_typography_impression(manifest, checks)
+        validate_typography_font_selection(manifest, root, checks)
+        validate_typography_composition(manifest, root, checks)
         validate_multiframe_contract(manifest, root, checks)
         validate_detail_inventory(manifest, checks)
         validate_asset_units(manifest, checks)

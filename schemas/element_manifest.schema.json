@@ -142,6 +142,76 @@
         "interactionQaRequired": { "type": "boolean" }
       }
     },
+    "typographyComposition": {
+      "type": "array",
+      "description": "Section-wide typography composition measured from the source. This is a role graph, not a list of CSS declarations: it preserves jump ratios, weight contrast, negative space, and deliberately extreme display scale so a page cannot converge on one safe middle size.",
+      "items": {
+        "type": "object",
+        "required": ["section", "sourceImage", "dominantElementId", "roles", "hierarchyEdges", "whitespaceEdges", "extremeScale", "evidencePath"],
+        "properties": {
+          "section": { "type": "string", "minLength": 1 },
+          "sourceImage": { "type": "string", "minLength": 1 },
+          "dominantElementId": { "type": "string", "minLength": 1 },
+          "roles": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["elementId", "semanticRole", "sourceGlyphHeightPx", "sourceFontWeight", "sourceLineHeightRatio", "sourceTrackingEm"],
+              "properties": {
+                "elementId": { "type": "string", "minLength": 1 },
+                "semanticRole": { "enum": ["display", "lead", "body", "label", "microcopy", "numeral", "unit"] },
+                "sourceGlyphHeightPx": { "type": "number", "exclusiveMinimum": 0 },
+                "sourceFontWeight": { "type": "integer", "minimum": 1, "maximum": 1000 },
+                "sourceLineHeightRatio": { "type": "number", "exclusiveMinimum": 0 },
+                "sourceTrackingEm": { "type": "number" }
+              }
+            }
+          },
+          "hierarchyEdges": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["from", "to", "sourceSizeRatio", "sourceWeightDelta", "sizeTolerance", "weightTolerance"],
+              "properties": {
+                "from": { "type": "string", "minLength": 1 },
+                "to": { "type": "string", "minLength": 1 },
+                "sourceSizeRatio": { "type": "number", "exclusiveMinimum": 0 },
+                "sourceWeightDelta": { "type": "number" },
+                "sizeTolerance": { "type": "number", "minimum": 0, "maximum": 0.35 },
+                "weightTolerance": { "type": "number", "minimum": 0, "maximum": 300 }
+              }
+            }
+          },
+          "whitespaceEdges": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Measured negative space between text blocks. This is not the CSS white-space property.",
+            "items": {
+              "type": "object",
+              "required": ["before", "after", "sourceGapToDominantRatio", "tolerance"],
+              "properties": {
+                "before": { "type": "string", "minLength": 1 },
+                "after": { "type": "string", "minLength": 1 },
+                "sourceGapToDominantRatio": { "type": "number", "minimum": -1 },
+                "tolerance": { "type": "number", "minimum": 0, "maximum": 0.35 }
+              }
+            }
+          },
+          "extremeScale": {
+            "type": "object",
+            "required": ["required", "sourceDominantBlockHeightRatio", "maxScaleLossRatio"],
+            "properties": {
+              "required": { "type": "boolean" },
+              "sourceDominantBlockHeightRatio": { "type": "number", "exclusiveMinimum": 0 },
+              "maxScaleLossRatio": { "type": "number", "minimum": 0, "maximum": 0.35 }
+            }
+          },
+          "evidencePath": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "motion": {
       "type": "object",
       "description": "Conditional Phase 4.75/7.5 motion plan. Static pages set required=false; source-requested motion must be planned and runtime-tested.",
@@ -523,6 +593,21 @@
               "maskOwner": { "type": "string", "minLength": 1 },
               "sourceFrameVisible": { "type": "boolean" },
               "sourceEvidencePath": { "type": "string", "minLength": 1 },
+              "edgeContact": {
+                "type": "object",
+                "description": "Rendered DOM-edge contract for artwork that intentionally runs flush to selected card/container edges instead of inheriting generic padding.",
+                "required": ["ownerId", "edges", "maxGapPx"],
+                "properties": {
+                  "ownerId": { "type": "string", "minLength": 1 },
+                  "edges": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": { "enum": ["top", "right", "bottom", "left"] }
+                  },
+                  "maxGapPx": { "type": "number", "minimum": 0 }
+                }
+              },
               "cropInUsePath": { "type": "string", "minLength": 1, "description": "Rendered consumer crop proving there is no double padding, hard color seam, or unintended image frame." }
             }
           },
@@ -580,6 +665,40 @@
                   "reason": { "type": "string" },
                   "evidencePath": { "type": "string" }
                 }
+              },
+              "microGeometry": {
+                "type": "object",
+                "description": "Executable contract for small semantic geometry. The data-el binds the actual primitive/group, not a larger layout wrapper.",
+                "required": ["kind", "evidencePath"],
+                "properties": {
+                  "kind": { "enum": ["circle", "triangle", "radial-rays"] },
+                  "evidencePath": { "type": "string", "minLength": 1 },
+                  "maxAspectRatioError": { "type": "number", "minimum": 0, "maximum": 0.25 },
+                  "polygonVertexCount": { "const": 3 },
+                  "targetId": { "type": "string", "minLength": 1 },
+                  "placementRegion": { "enum": ["upper-right", "upper-left", "lower-right", "lower-left", "above", "below", "left", "right"] },
+                  "directionMode": { "enum": ["radiate-away", "parallel", "not-applicable"] },
+                  "raySelector": { "type": "string", "minLength": 1 },
+                  "rayCount": { "type": "integer", "minimum": 1 },
+                  "sharedOrigin": { "type": "boolean" },
+                  "mustNotOverlapTarget": { "type": "boolean" },
+                  "maxDirectionErrorDeg": { "type": "number", "minimum": 0, "maximum": 90 },
+                  "minRayCenterSeparationPx": { "type": "number", "minimum": 0 }
+                },
+                "allOf": [
+                  {
+                    "if": { "properties": { "kind": { "const": "circle" } }, "required": ["kind"] },
+                    "then": { "required": ["maxAspectRatioError"] }
+                  },
+                  {
+                    "if": { "properties": { "kind": { "const": "triangle" } }, "required": ["kind"] },
+                    "then": { "required": ["polygonVertexCount"] }
+                  },
+                  {
+                    "if": { "properties": { "kind": { "const": "radial-rays" } }, "required": ["kind"] },
+                    "then": { "required": ["targetId", "placementRegion", "directionMode", "raySelector", "rayCount", "sharedOrigin", "mustNotOverlapTarget", "maxDirectionErrorDeg", "minRayCenterSeparationPx"] }
+                  }
+                ]
               }
             }
           },
@@ -707,6 +826,7 @@
               "sourceImage": { "type": "string", "description": "mockup/reference the generation is based on" },
               "workspacePath": { "type": "string", "description": "where the generated asset is saved, e.g. work/assets/hero-bg.png" },
               "generator": { "type": "string", "description": "tool used, e.g. imagegen, cockpit image" },
+              "backgroundRemovalUsed": { "type": "boolean", "description": "true when chroma key or any post-generation background removal produced the adopted alpha asset. true requires semanticPixelProtection on the element." },
               "usedBy": { "type": "array", "items": { "type": "string" }, "description": "element ids that consume this asset" },
               "contaminationCheck": {
                 "type": "object",
@@ -720,6 +840,33 @@
               },
               "reviewPath": { "type": "string", "description": "photo-asset-review.md row/block for this candidate" },
               "pairPath": { "type": "string", "description": "crop pair proving asset match or clean-raster adoption" }
+            }
+          },
+          "semanticPixelProtection": {
+            "type": "object",
+            "description": "Protects semantically important colors such as lips, eyes, badges, or status dots from chroma-key/background-removal damage by comparing the pre-key sheet with the same-size transparent master.",
+            "required": ["method", "sourcePath", "transparentMasterPath", "protectedSamples", "reviewPath"],
+            "properties": {
+              "method": { "const": "protected-color-retention" },
+              "sourcePath": { "type": "string", "minLength": 1 },
+              "transparentMasterPath": { "type": "string", "minLength": 1 },
+              "reviewPath": { "type": "string", "minLength": 1 },
+              "protectedSamples": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["name", "sourceColor", "colorTolerance", "minMatchedPixels", "minAlpha", "minRetainedRatio"],
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "sourceColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+                    "colorTolerance": { "type": "number", "minimum": 0 },
+                    "minMatchedPixels": { "type": "integer", "minimum": 1 },
+                    "minAlpha": { "type": "integer", "minimum": 1, "maximum": 255 },
+                    "minRetainedRatio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+                  }
+                }
+              }
             }
           },
           "multiZoneAsset": {
@@ -837,6 +984,59 @@
               "letterformClass": { "enum": ["gothic", "mincho", "rounded", "display", "monospace", "script", "other"], "description": "Classify the source glyphs from a zoom crop BEFORE choosing candidates. A gothic source rebuilt in mincho is a class mismatch even when its bbox passes." },
               "weightClass": { "type": "string", "description": "e.g. 'display gothic 900', 'mincho B1 700'" },
               "fontBakeoffEvidence": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "type": "string" }, "description": "Readable crop-pair paths for 2–3 class-matched font candidates and the chosen face." },
+              "fontSelection": {
+                "type": "object",
+                "description": "Role-specific font selection and delivery proof. A family name in computed CSS is not enough: the chosen face, requested weight, load source, fallbacks, and candidate bake-off must be explicit.",
+                "required": ["selectedFamily", "selectedSource", "requestedWeight", "availableWeights", "candidates", "delivery", "fallbackFamilies", "fallbackEvidencePath"],
+                "properties": {
+                  "selectedFamily": { "type": "string", "minLength": 1 },
+                  "selectedSource": { "enum": ["google-fonts", "self-hosted", "local-webfont", "hosted-webfont", "system"] },
+                  "requestedWeight": { "type": "integer", "minimum": 1, "maximum": 1000 },
+                  "availableWeights": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 1000 } },
+                  "variableWeightRange": {
+                    "type": "object",
+                    "required": ["min", "max"],
+                    "properties": {
+                      "min": { "type": "integer", "minimum": 1, "maximum": 1000 },
+                      "max": { "type": "integer", "minimum": 1, "maximum": 1000 }
+                    }
+                  },
+                  "candidates": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": {
+                      "type": "object",
+                      "required": ["family", "source", "weight", "evidencePath"],
+                      "properties": {
+                        "family": { "type": "string", "minLength": 1 },
+                        "source": { "enum": ["google-fonts", "self-hosted", "local-webfont", "hosted-webfont", "system"] },
+                        "weight": { "type": "integer", "minimum": 1, "maximum": 1000 },
+                        "evidencePath": { "type": "string", "minLength": 1 }
+                      }
+                    }
+                  },
+                  "delivery": {
+                    "type": "object",
+                    "required": ["strategy", "fontDisplay", "sourceRef"],
+                    "properties": {
+                      "strategy": { "enum": ["external-stylesheet", "self-hosted", "local", "system"] },
+                      "fontDisplay": { "enum": ["swap", "optional", "block", "fallback", "auto"] },
+                      "sourceRef": { "type": "string", "minLength": 1 }
+                    }
+                  },
+                  "fallbackFamilies": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+                  "fallbackEvidencePath": { "type": "string", "minLength": 1 },
+                  "systemFontException": {
+                    "type": "object",
+                    "required": ["allowed", "reason", "evidencePath"],
+                    "properties": {
+                      "allowed": { "const": true },
+                      "reason": { "type": "string", "minLength": 1 },
+                      "evidencePath": { "type": "string", "minLength": 1 }
+                    }
+                  }
+                }
+              },
               "expectedVisualLineCount": { "type": "integer", "minimum": 1, "description": "Rendered visual line count measured from the comp at manifest.viewport.width. Kept separate from the number of span/script runs." },
               "expectedRunCount": { "type": "integer", "minimum": 1, "description": "Number of declared scriptRuns. This is not a visual line count; contract_doctor checks it against scriptRuns length." },
               "expectedLineCount": { "type": "integer", "minimum": 1, "deprecated": true, "description": "Deprecated ambiguous field. Migrate to expectedVisualLineCount; use expectedRunCount for span/script-run count." },
@@ -976,6 +1176,18 @@
           {
             "if": { "required": ["assetSurfaceContract"] },
             "then": { "required": ["surfaceIntegration"] }
+          },
+          {
+            "if": {
+              "properties": {
+                "generatedAsset": {
+                  "properties": { "backgroundRemovalUsed": { "const": true } },
+                  "required": ["backgroundRemovalUsed"]
+                }
+              },
+              "required": ["generatedAsset"]
+            },
+            "then": { "required": ["semanticPixelProtection"] }
           },
           {
             "if": {

@@ -22,7 +22,12 @@ import sys
 import zlib
 from pathlib import Path
 
-from surface_pixels import inspect_png_surface, parse_hex_color, rgb_distance
+from surface_pixels import (
+    inspect_png_surface,
+    inspect_protected_color_retention,
+    parse_hex_color,
+    rgb_distance,
+)
 
 
 PHOTO_CLASSES = {"photo", "illustration"}
@@ -141,6 +146,65 @@ def require_clean_check(
                 element_id,
             )
         )
+
+
+def evaluate_semantic_pixel_protection(
+    checks: list[dict], root: Path, element: dict
+) -> None:
+    element_id = str(element.get("id") or "<missing-id>")
+    generated = element.get("generatedAsset") or {}
+    if generated.get("backgroundRemovalUsed") is not True:
+        return
+    protection = element.get("semanticPixelProtection")
+    if not isinstance(protection, dict):
+        checks.append(finding(
+            "blocked", "semantic-pixel-protection-missing",
+            f"'{element_id}' used background removal without protected semantic color checks",
+            element_id,
+        ))
+        return
+    source_path = resolve_path(root, protection.get("sourcePath"))
+    master_path = resolve_path(root, protection.get("transparentMasterPath"))
+    samples = protection.get("protectedSamples")
+    if (
+        source_path is None or not source_path.is_file()
+        or master_path is None or not master_path.is_file()
+        or not isinstance(samples, list) or not samples
+    ):
+        checks.append(finding(
+            "blocked", "semantic-pixel-protection-evidence-missing",
+            f"'{element_id}' needs readable pre-key/master PNGs and protectedSamples",
+            element_id,
+        ))
+        return
+    if not readable_file(root, protection.get("reviewPath")):
+        checks.append(finding(
+            "blocked", "semantic-pixel-protection-review-missing",
+            f"'{element_id}' needs a readable 200% semantic-detail review crop",
+            element_id,
+        ))
+    try:
+        metrics = inspect_protected_color_retention(source_path, master_path, samples)
+    except (OSError, ValueError, TypeError, AttributeError, zlib.error) as exc:
+        checks.append(finding(
+            "blocked", "semantic-pixel-protection-read-failed",
+            f"'{element_id}' protected semantic pixels could not be inspected: {exc}",
+            element_id,
+        ))
+        return
+    if not metrics["pass"]:
+        failed = [row for row in metrics["samples"] if not row["pass"]]
+        checks.append(finding(
+            "blocked", "semantic-pixel-loss",
+            f"'{element_id}' background removal erased or weakened protected semantic pixels",
+            element_id, failedSamples=failed, pixelMetrics=metrics,
+        ))
+    else:
+        checks.append(finding(
+            "pass", "semantic-pixels-retained",
+            f"'{element_id}' protected semantic colors survived background removal",
+            element_id, pixelMetrics=metrics,
+        ))
 
 
 def adopted_workspace_path(element: dict) -> str | None:
@@ -779,6 +843,7 @@ def evaluate_asset_policy(manifest: dict, work_root: Path | str) -> dict:
                     )
                 )
 
+        evaluate_semantic_pixel_protection(checks, root, element)
         evaluate_surface_integration(checks, root, element)
 
         element_blocked = any(

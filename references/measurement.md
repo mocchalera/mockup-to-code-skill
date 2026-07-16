@@ -229,6 +229,18 @@ vice versa) is rejected before box diff, even when its width/height are close.
 Record `typeSpec.letterformClass` and the candidate pair paths in
 `fontBakeoffEvidence`.
 
+The bake-off is **per semantic role**, not one family choice for the whole LP.
+A poster display, handwritten lead, card title, numeral, CTA label, and
+microcopy may require different faces or different real weights from one
+family. Record the executable decision in `typeSpec.fontSelection`: chosen
+family and source, requested and available weights (or variable range), at
+least two candidate crop pairs, delivery strategy/source URL or file, fallback
+stack, and a fallback-state crop. Include at least one candidate that is a
+loadable webfont (Google Fonts, another hosted face, or a self-hosted/local
+webfont). System-only selection is allowed only when the source crop proves it
+and `systemFontException` records why. A CSS family name by itself does not
+prove that the browser loaded the face or the requested weight.
+
 **No-transform repair contract:** structural text is not a geometric shape.
 Do not plan `scaleX`, `scaleY`, skew, rotate, or transform translation as a
 font-fit tool. These operations change stroke contrast/counters and leave the
@@ -271,6 +283,29 @@ note such as `display gothic 900` cannot encode that distinction. Measure each
 source frame independently. If three or more section headings produce an
 identical bbox/type signature, treat it as template-copy risk unless the comps
 visibly share one lockup system and `sharedSystemEvidence` records that proof.
+
+### Section typography role graph and negative space (required)
+
+Measure the section as a typographic composition, not a bag of independent
+text boxes. Add one `typographyComposition` row for every section that owns a
+critical heading. Register at least two source roles—display, lead, body,
+label, microcopy, numeral, or unit—and measure visible glyph height, intended
+weight, line-height ratio, and tracking for each.
+
+Then record two kinds of edges:
+
+- `hierarchyEdges`: dominant-to-secondary source size ratio and signed weight
+  delta. This is the executable jump-rate contract; it catches a 110px/28px
+  source becoming a polite 52px/27px build.
+- `whitespaceEdges`: vertical gap between two text-block bboxes divided by the
+  dominant block height. This is **negative space**, not the CSS `white-space`
+  property. It catches both compressed editorial rhythm and generic oversized
+  section padding.
+
+If the source deliberately uses poster-scale type, set `extremeScale.required`
+and bind `sourceDominantBlockHeightRatio`. “Extreme” is a source fact, not a
+stylistic suggestion. Do not lower it because the browser version feels safer;
+rebalance the surrounding roles and whitespace instead.
 
 ### Poster lockup geometry (multi-line FV headings; required)
 

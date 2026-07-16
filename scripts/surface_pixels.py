@@ -186,6 +186,58 @@ def inspect_png_surface(path: Path) -> dict:
     }
 
 
+def inspect_protected_color_retention(
+    source_path: Path, transparent_path: Path, protected_samples: list[dict]
+) -> dict:
+    """Measure whether semantic source colors survived alpha extraction.
+
+    The source and transparent master must have identical geometry. Each
+    protected sample identifies a source color (for example a lip or badge
+    color); every matching source pixel must retain enough alpha in the
+    transparent master. This deliberately checks pixels, not a self-reported
+    visual verdict.
+    """
+    source_width, source_height, source_channels, source_rows = _read_png(source_path)
+    out_width, out_height, out_channels, out_rows = _read_png(transparent_path)
+    if (source_width, source_height) != (out_width, out_height):
+        raise ValueError("protected-color source and transparent master must have identical dimensions")
+
+    results = []
+    for sample in protected_samples:
+        name = str(sample.get("name") or "<unnamed>")
+        color = parse_hex_color(sample.get("sourceColor", ""))
+        tolerance = float(sample.get("colorTolerance", 0))
+        min_alpha = int(sample.get("minAlpha", 200))
+        min_pixels = int(sample.get("minMatchedPixels", 1))
+        min_ratio = float(sample.get("minRetainedRatio", 1))
+        matched = retained = 0
+        for y in range(source_height):
+            for x in range(source_width):
+                source_pixel = _pixel(source_rows, source_channels, x, y)
+                if source_pixel[3] <= 0 or rgb_distance(list(source_pixel[:3]), color) > tolerance:
+                    continue
+                matched += 1
+                if _pixel(out_rows, out_channels, x, y)[3] >= min_alpha:
+                    retained += 1
+        ratio = retained / max(1, matched)
+        results.append({
+            "name": name,
+            "sourceColor": sample.get("sourceColor"),
+            "matchedPixels": matched,
+            "retainedPixels": retained,
+            "retainedRatio": round(ratio, 6),
+            "minMatchedPixels": min_pixels,
+            "minRetainedRatio": min_ratio,
+            "pass": matched >= min_pixels and ratio >= min_ratio,
+        })
+    return {
+        "width": source_width,
+        "height": source_height,
+        "samples": results,
+        "pass": bool(results) and all(row["pass"] for row in results),
+    }
+
+
 def parse_hex_color(value: str) -> list[int]:
     text = value.strip().lstrip("#")
     if len(text) == 3:

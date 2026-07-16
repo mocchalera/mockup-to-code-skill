@@ -1,5 +1,47 @@
 # mockup-to-code — Validation Report
 
+## v29 addendum (2026-07-16, macOS arm64)
+
+v29 converts four listening-care LP comp/build typography comparisons into a
+role-level font and composition contract. The build already loaded Klee One,
+Noto Sans JP, and Noto Serif JP; the residual was not “no webfont,” but a safe
+middle scale, uniform boldness, weak role differentiation, and unmeasured
+negative space.
+
+| Field failure | New executable guard | Verified result |
+| --- | --- | --- |
+| Computed CSS still named a webfont while the face failed to load and a fallback rendered | `typeSpec.fontSelection` freezes selected source/family/real weight/delivery/fallback; browser checks loaded `FontFace` entries | missing-face fixture passes the old family-string check but now fails `font-face-load` |
+| A requested `850`/`900` weight was unavailable or browser-synthesized | doctor verifies static faces or variable range; browser compares requested and computed weights | unavailable-weight and system-only-without-exception fixtures block |
+| Display, lead, card title, label, and microcopy converged on one safe size/weight | `typographyComposition.hierarchyEdges` freezes source size ratios and signed weight deltas | flat 48px/32px, 700/600 fixture fails `typography-hierarchy` |
+| Editorial breathing room became generic section padding | `whitespaceEdges` measures text-block gap / dominant-block height | wrong gap fixture fails `typography-whitespace` |
+| Source poster-scale type was tastefully capped down | `extremeScale` freezes the dominant block/frame ratio and maximum allowed loss | timid canonical heading fixture fails `typography-extreme-scale` |
+
+Documentation now treats Google Fonts, other hosted fonts, self-hosted/local
+webfonts, and source-evidenced system fonts as explicit delivery choices. Font
+bake-offs are per semantic role, and loaded/delayed/fallback states are all QA
+evidence. Full `npm test` passes all 165 component tests, including 40
+contract-doctor and 33 browser/script regressions. JSON parsing, Node/Python
+syntax checks, diff checks, and Skill Creator validation also pass.
+
+## v28 addendum (2026-07-16, macOS arm64)
+
+v28 converts the final listening-care LP review into executable semantic
+micro-geometry and raster-detail contracts. Small decorations are no longer
+accepted merely because a roughly similar shape exists.
+
+| Field failure | New executable guard | Verified result |
+| --- | --- | --- |
+| Flow-arrow circles stretched into ellipses | `decorativeCraft.microGeometry.kind=circle` checks live width/height error; the primitive uses its own `data-el` | 48×72 fixture fails while a true circle remains eligible |
+| Step corner wedge became a four-point trapezoid | triangle contract requires exactly three SVG/clip-path polygon vertices | four-vertex source and browser fixtures fail contract doctor / visual-check |
+| Yellow attention bars were placed inside the numeral or shared its center | radial-ray contract separates target/direction from origin and checks side, count, overlap, separation, and angular alignment | inside-number fixture fails; separated upper-right arc fixture passes |
+| Chroma-key color removed lip pixels together with the background | `semanticPixelProtection` compares sampled source colors against alpha in the same-size transparent master | erased-lip PNG fixture blocks `semantic-pixel-loss`; retained detail passes |
+| Card illustration inherited generic left/right/bottom padding | `surfaceIntegration.edgeContact` compares live artwork and owner edges | padded card fixture fails `surface-edge-contact` |
+
+Documentation also freezes routed flow connectors as visible-gutter paths and
+reiterates that CTA decorations must manifest `mustNotCover` targets. Full
+`npm test` passes all 161 component tests, including 38 contract-doctor, 20
+asset-preflight, and 31 browser/script regressions.
+
 ## v27 addendum (2026-07-15, macOS arm64)
 
 v27 closes three workflow gaps exposed by the full-page surface-integration dogfood pass.

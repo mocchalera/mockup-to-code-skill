@@ -128,6 +128,22 @@ audit** — any `[data-el]` computed `absolute`/`fixed`/`sticky` without the
 matching `positioning` declaration (or a sanctioned decorative/overlay
 `layerRole`) in the manifest is a `layout-law` violation.
 
+Declared `decorativeCraft.microGeometry` adds pixel-small but hard checks:
+circle aspect ratio, exact triangle vertex count, radial-ray count/side/
+separation/target overlap, and angular alignment away from the target center.
+This deliberately distinguishes “the numeral center defines the outward
+direction” from “the rays begin at the numeral center.” Declared
+`surfaceIntegration.edgeContact` likewise checks the rendered artwork-to-card
+edge gaps so a generic padding utility cannot silently reframe edge-to-edge
+illustration. Bind `data-el` to the primitive or artwork layer being judged;
+binding a larger connector/card wrapper produces invalid evidence.
+
+For background-removed raster illustrations, the pre-CSS asset report must
+include `semantic-pixels-retained`. Review the protected feature crop at 200%
+in addition to the whole illustration: hair and clothing surviving does not
+compensate for a missing lip, eye, badge, or status dot. If the protected-color
+check fails, regenerate/re-key before layout QA.
+
 Critical Japanese headings additionally use
 `typeSpec.responsiveLineContracts`. At each audited width, visual-check
 clusters real text-node glyph rects into rendered lines, compares the exact
@@ -135,12 +151,21 @@ line strings, and rejects `forbiddenOrphanFragments`. This catches an authored
 `<br>` followed by an accidental second wrap that strands `て`, `へ`, `が`, a
 unit, or another short semantic fragment.
 
-`font-family`, `typography-transform`, and `text-overlap` are hard violations,
-not crop-pair review notes. A source-evidenced display distortion is the only
+`font-family`, `font-face-load`, `font-weight-face`,
+`typography-hierarchy`, `typography-whitespace`,
+`typography-extreme-scale`, `typography-transform`, and `text-overlap` are
+hard violations, not crop-pair review notes. A source-evidenced display distortion is the only
 transform exception: manifest `typeSpec.transformException` must name the
 decorative/display intent, reason, and readable evidence crop. Passing the
 measured bbox never licenses distorted glyphs or a collision with the next
 copy block.
+
+Run browser QA after `document.fonts.ready`, then also inspect a blocked-font
+or deliberately disabled-provider state. The selected non-system face must
+appear as a loaded `FontFace` at the requested weight; computed CSS that still
+lists the family while rendering a fallback is a failure. Capture loaded,
+delayed-swap, and fallback crops. Provider failure may not silently become the
+accepted geometry baseline.
 
 Both render.mjs and visual-check.mjs force-load lazy images before measuring.
 If you verify through another transport (MCP Playwright, in-app browser),
@@ -291,6 +316,13 @@ minimum scale separately. A heading fails when it is materially more timid,
 more packed, or more ink-dense than the source even if its DOM bbox and text
 content pass. Identical type measurements repeated across unrelated source
 frames are a measurement defect, not a reusable design token.
+
+Also compare every `typographyComposition` edge. Size ratios and signed weight
+deltas must stay within their declared tolerances. Measure each vertical
+text-block gap and divide it by the dominant block height; this catches both
+crowding and generic excess padding. When `extremeScale.required` is true, the
+canonical render must preserve the minimum dominant-block/frame ratio. A
+smaller heading surrounded by more empty canvas is not equivalent composition.
 
 Per section record:
 

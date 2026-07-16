@@ -137,6 +137,16 @@ is not a generic bbox escape. `visual-check.mjs` rejects scaled, skewed,
 rotated, or visually translated structural text without that evidence and
 also rejects substantial undeclared structural-text overlaps.
 
+Critical headings and labels also require `typeSpec.fontSelection`. Bind the
+selected family to `text.fontFamily`, identify whether it comes from Google
+Fonts, another hosted source, self-hosted/local files, or the system, and list
+the exact requested/available weights. Store at least two distinct candidate
+families with crop evidence, the delivery strategy/source reference,
+`font-display`, fallback families, and a browser crop of the fallback state.
+At least one candidate must be a loadable non-system face. Selecting a system
+font requires `systemFontException` with source proof. A `900` declaration is
+not an available face merely because the browser can synthesize it.
+
 Every fv/section-critical heading also records `typeSpec.sourceImpression`.
 This is the source-derived impression contract, not a CSS wish list: frame
 width/height, block width/height ratios, max-line and visible-glyph ratios,
@@ -145,6 +155,15 @@ heading-to-lead/body/label jump ratios, desktop/mobile scale bounds, and an
 evidence crop. `contract_doctor.py` checks that block ratios agree with the
 measured bbox and blocks an identical bbox/type signature copied across three
 or more distinct source frames unless each row names `sharedSystemEvidence`.
+
+Add top-level `typographyComposition` for every section containing a critical
+heading. Its role rows freeze source glyph height, weight, line-height, and
+tracking. `hierarchyEdges` freeze role-to-role size ratios and weight deltas;
+`whitespaceEdges` freeze measured negative space as gap/dominant-block-height;
+`extremeScale` prevents a deliberately oversized display role from being
+clamped into a tasteful middle. Every endpoint is a real manifest element id,
+and every row carries a readable source crop. These are browser QA operands,
+not explanatory prose.
 
 **Business-requirement additions:** an element the comp does not have but the
 handoff requires (decision rail, sticky CTA, legal note) is manifested with
@@ -243,6 +262,45 @@ photo or illustration, manifest these decisions before asset selection:
 A manifest that treats a fused raster as one acceptable `photo` while its
 baked-in UI/text remains visible has skipped decomposition; Phase 7 marks the
 affected foreground devices `missing`.
+
+For semantic small geometry, declare the intended primitive instead of leaving
+CSS to infer the icon's meaning:
+
+```json
+{
+  "id": "flow.step-01-attention",
+  "el": "flow-step-01-attention",
+  "decorativeCraft": {
+    "fieldType": "flat-geometry",
+    "complexityTarget": "three separated bars outside the numeral on an upper-right arc",
+    "medium": "html-svg-hybrid",
+    "evidencePath": "reports/crops/flow-step-01-source-2x.png",
+    "microGeometry": {
+      "kind": "radial-rays",
+      "evidencePath": "reports/crops/flow-step-01-source-2x.png",
+      "targetId": "flow.step-01-number",
+      "placementRegion": "upper-right",
+      "directionMode": "radiate-away",
+      "raySelector": ".attention-ray",
+      "rayCount": 3,
+      "sharedOrigin": false,
+      "mustNotOverlapTarget": true,
+      "maxDirectionErrorDeg": 18,
+      "minRayCenterSeparationPx": 8
+    }
+  }
+}
+```
+
+If background removal creates the transparent illustration, add
+`generatedAsset.backgroundRemovalUsed:true` and
+`semanticPixelProtection`. `sourcePath` and `transparentMasterPath` are the
+same-size before/after PNGs; each protected sample names a source color,
+matching tolerance, minimum matching pixel count, minimum output alpha, and
+minimum retention ratio. `asset_preflight.py` reads both PNGs and blocks lost
+features before consumers are split. For source-measured edge-to-edge card art,
+put `surfaceIntegration.edgeContact {ownerId, edges, maxGapPx}` on the artwork;
+`visual-check.mjs` compares the live artwork and owner DOMRects.
 
 ### Asset/topology revision re-entry
 
